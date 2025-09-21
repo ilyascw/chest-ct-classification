@@ -1,0 +1,7 @@
+# Локальная среда хакатона
+ct_hackathon_env/
+local_dev/results/
+local_dev/temp/
+*.log
+.datasphere/
+data/
