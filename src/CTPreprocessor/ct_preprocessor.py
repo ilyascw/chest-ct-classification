@@ -12,17 +12,17 @@ from functools import partial
 import contextlib
 
 import numpy as np
-import torch
-import SimpleITK as sitk
+import torch # type: ignore
+import SimpleITK as sitk # type: ignore
 import pydicom
-import nibabel as nib
+import nibabel as nib # type: ignore
 from tqdm import tqdm
 
-from monai.transforms import (
+from monai.transforms import ( # type: ignore
     Compose, LoadImaged, EnsureChannelFirstd, EnsureTyped,
     ScaleIntensityRanged, Lambda
-)
-from monai.data import Dataset, DataLoader
+) 
+from monai.data import Dataset, DataLoader # type: ignore
 
 # Подавление warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -243,14 +243,16 @@ def load_nifti_robust(filepath: str, logger: CTLogger) -> Tuple[torch.Tensor, Di
             # Fallback через nibabel
             nii = nib.load(filepath)
             array = nii.get_fdata().astype(np.float32)
-            
-            if len(array.shape) == 3:  # (H,W,D)
-                array = array[None, None, ...]  # (1,1,H,W,D)
-            
-            volume = torch.from_numpy(array)
+
+            # ИЗВЛЕКАЕМ РЕАЛЬНЫЙ SPACING из nibabel header
+            header = nii.header
+            pixdim = header['pixdim']
+            real_spacing = [pixdim[1], pixdim[2], pixdim[3]]  # X, Y, Z
+
             meta = {
                 "affine": nii.affine,
-                "spacing": [1.0, 1.0, 1.0],  # default
+                "spacing": real_spacing,  # ← РЕАЛЬНЫЙ spacing!
+                "pixdim": pixdim,         # ← дублируем для надежности
                 "reader": "nibabel_fallback"
             }
             
@@ -260,6 +262,49 @@ def load_nifti_robust(filepath: str, logger: CTLogger) -> Tuple[torch.Tensor, Di
     except Exception as e:
         logger.error(f"❌ Полная ошибка загрузки NIfTI {filepath}: {e}")
         raise RuntimeError(f"Не удалось загрузить NIfTI: {e}")
+
+
+# ----------------------------
+# Извлечение размера вокселя
+# ----------------------------
+
+def extract_spacing_robust(meta: Dict[str, Any]) -> Optional[List[float]]:
+    """Робастное извлечение spacing из разных источников"""
+    
+    # 1. Прямое поле spacing (DICOM или наш fallback)
+    if "spacing" in meta and meta["spacing"] is not None:
+        spacing = meta["spacing"]
+        if isinstance(spacing, (list, tuple, np.ndarray)) and len(spacing) >= 3:
+            return list(spacing)[:3]
+    
+    # 2. Поле pixdim (MONAI NIfTI)
+    if "pixdim" in meta:
+        pixdim = meta["pixdim"]
+        if hasattr(pixdim, '__len__') and len(pixdim) >= 4:
+            try:
+                # pixdim[0] не используется, [1,2,3] = X,Y,Z
+                spacing = [float(pixdim[1]), float(pixdim[2]), float(pixdim[3])]
+                if all(s > 0 for s in spacing):  # проверка на валидность
+                    return spacing
+            except:
+                pass
+    
+    # 3. Из affine матрицы (последний шанс)
+    if "affine" in meta:
+        try:
+            affine = meta["affine"]
+            if hasattr(affine, 'shape') and affine.shape == (4, 4):
+                # Вычисляем spacing как норму векторов
+                if hasattr(affine, 'numpy'):  # если torch tensor
+                    affine = affine.numpy()
+                spacing = np.sqrt(np.sum(affine[:3,:3]**2, axis=0))
+                return spacing.tolist()
+        except:
+            pass
+    
+    # Если ничего не найдено
+    return None
+
 
 # ----------------------------
 # Обнаружение данных (ИСПРАВЛЕНО)
@@ -349,7 +394,15 @@ def build_robust_pipeline(config: PreprocConfig) -> Compose:
         # 3. Spacing нормализация (если возможно)
         img_resampled = img_clipped
         try:
-            current_spacing = meta.get("spacing", None)
+
+            current_spacing = extract_spacing_robust(meta)  # ← НОВЫЙ вызов
+
+            if current_spacing is not None:
+                print(f"  📏 Найденный spacing: {current_spacing}")
+                # остальная логика ресэмплинга...
+            else:
+                print(f"  ⚠️ Не удалось извлечь spacing из метаданных")
+
             
             if current_spacing is not None:
                 spacing_array = np.array(current_spacing)
