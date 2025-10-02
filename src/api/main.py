@@ -4,8 +4,8 @@ import shutil
 from pathlib import Path
 import uuid
 import sys
+import os
 
-# Добавляем путь
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.pipeline.core_pipeline import CTPathologyPipeline
@@ -13,17 +13,21 @@ from src.pipeline.data_models import PipelineConfig
 
 app = FastAPI(title="CT Pathology API")
 
-# Глобальный pipeline
 pipeline = None
 
 @app.on_event("startup")
 async def startup():
     global pipeline
+    
+    # В контейнере модели будут в /app/models/
+    base_path = Path("/app/models")
+    
     config = PipelineConfig(
-        ct_clip_checkpoint="/home/jupyter/datasphere/project/chest-ct-classification/models/CT_LiPro_v2.pt",
-        catboost_model="/home/jupyter/datasphere/project/chest-ct-classification/models/catboost_pathology_classifier.cbm",
-        device="cuda",
-        max_workers=2
+        ct_clip_checkpoint=str(base_path / "CT_LiPro_v2.pt"),
+        catboost_model=str(base_path / "catboost_pathology_classifier.cbm"),
+        device="cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu",  # Автодетект
+        max_workers=2,
+        log_level="INFO"
     )
     pipeline = CTPathologyPipeline(config)
 
@@ -39,9 +43,16 @@ async def predict(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, f)
     
     output_excel = temp_dir / f"{job_id}_results.xlsx"
-    pipeline.process_zip_archives([str(temp_zip)], str(output_excel))
     
-    return FileResponse(output_excel, filename="results.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    try:
+        pipeline.process_zip_archives([str(temp_zip)], str(output_excel))
+        return FileResponse(
+            output_excel, 
+            filename="results.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    finally:
+        temp_zip.unlink(missing_ok=True)  # Очищаем
 
 @app.get("/health")
 async def health():
@@ -49,4 +60,4 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"message": "CT Pathology Detection API", "endpoints": ["/predict", "/health"]}
+    return {"message": "CT Pathology Detection API", "endpoints": ["/predict", "/health", "/docs"]}
