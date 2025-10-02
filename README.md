@@ -133,20 +133,21 @@ ct-pathology-detection/
 ├── 📄 Dockerfile                   \# Образ приложения
 ├── 📄 requirements.txt             \# Python зависимости
 ├── 📄 .env.example                 \# Пример переменных окружения
-│
+├── 📂 notebooks/ \# Папка с юпитер ноутбуками, в которых велась работа над проектом
+│   ├── 📄 01_data_download_and_unpack.ipynb \# Загрузка, распаковка и первое знакомство с данными
+│   ├── 📄 02_preprocessing_ct.ipynb \# Здесь тестируем модуль для предобработки данных
+│   ├── 📄 03_medvae_baseline_anomaly_detection.ipynbpy #\ Эксперименты с моделью MedVae3d
+│   ├── 📄 04_ct_clip_pipeline.py #\ Эксперименты с ct_clip - предпосылки, что при увеличении количества обучающих данных подход может сработать
+│   ├── 📄 final.ipynb #\ Финальный эксперимент с ct-clip (1182 томов использовано на обучение/валидацию/тестирование)
+|   ├── 📄 final&autogluon.ipynb #\ Быстрое тестирование auto ml на извлеченных эмбедингах.
+|
+|
 ├── 📂 src/                         \# Исходный код системы
 │   ├── 📄 __init__.py             \# Инициализация пакета
 │   ├── 📄 preprocessing.py         \# Предобработка медицинских данных
 │   ├── 📄 feature_extraction.py   \# CT-CLIP feature extraction
 │   ├── 📄 model.py                \# CatBoost классификатор
 │   │
-│   ├── 📂 notebooks/ \# Папка с юпитер ноутбуками, в которых велась работа над проектом
-│   ├── 📄 01_data_download_and_unpack.ipynb \# Загрузка, распаковка и первое знакомство с данными
-│   ├── 📄 02_preprocessing_ct.ipynb \# Здесь тестируем модуль для предобработки данных
-│   ├── 📄 03_medvae_baseline_anomaly_detection.ipynbpy #\ Эксперименты с моделью MedVae3d
-│   ├── 📄 04_ct_clip_pipeline.py #\ Эксперименты с ct_clip - предпосылки, что при увеличении количества обучающих данных подход может сработать
-│   ├── 📄 final.ipynb #\ Финальный эксперимент с ct-clip (1182 томов использовано на обучение/валидацию/тестирование)
-│   ├── 📄 final&autogluon.ipynb #\ Быстрое тестирование auto ml на извлеченных эмбедингах.
 │   │   
 │   ├── 📂 pipeline/               \# Core processing pipeline
 │   │   ├── 📄 core_pipeline.py    \# Главный обработчик
