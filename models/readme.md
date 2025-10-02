@@ -1,0 +1,1 @@
+Dowload Ct-LiPro_v2.pt via link: https://huggingface.co/datasets/ibrahimhamamci/CT-RATE/tree/main/models/CT-CLIP-Related#:~:text=12%20months%20ago-,CT_LiPro_v2.pt,-Safe
