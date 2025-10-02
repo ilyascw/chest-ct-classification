@@ -24,9 +24,13 @@ CT Pathology Detection System представляет собой production-rea
 ### 🎯 **Детальные метрики производительности**
 
 #### **🏁 TEST SET (Тестовая выборка - финальный результат)**
+
 Accuracy: 79.50% ✅ | ROC AUC: 86.42% 🔥
+
 Precision: 80.21% 🎯 | PR AUC: 88.33% 🔥
+
 Recall: 84.62% 📊 | F1-Score: 82.35% ⭐
+
 Sensitivity: 84.62% | Specificity: 72.86%
 
 ### 🎯 Назначение системы:
