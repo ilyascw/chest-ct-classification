@@ -112,21 +112,21 @@ curl "http://localhost:8000/api/v1/status/{task_id}"
 
 curl "http://localhost:8000/api/v1/download/{task_id}" -o results.xlsx
 
-```
+
 
 ### **Шаг 5: Пример результата**
 
 После обработки вы получите Excel файл со следующей структурой:
-
+```
 | path_to_study | study_uid | probability_of_pathology | pathology | processing_status |
 |---------------|-----------|-------------------------|-----------|-------------------|
 | study_001/    | 1.2.3.4.5 | 0.8234                 | 1         | Success          |
 | study_002/    | 1.2.3.4.6 | 0.1456                 | 0         | Success          |
-
+```
 ## 📁 Структура проекта
 
-```
 
+```
 ct-pathology-detection/
 ├── 📄 README.md                    \# Этот файл
 ├── 📄 docker-compose.yml           \# Оркестрация сервисов
@@ -174,7 +174,6 @@ ct-pathology-detection/
 ├── 📂 tests/                      \# Тесты
     ├── 📄 test_pipeline.py        \# Тесты core pipeline
     └── 📄 test_api.py             \# Тесты API
-
 ```
 
 ## 📖 Описание основных файлов
