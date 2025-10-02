@@ -1,441 +1,219 @@
-# 🏥 CT Lung Pathology Detection System
+# 🏥 CT Pathology Detection System
 
-## Автоматическая классификация патологий лёгких на КТ с использованием CT-CLIP Foundation Model + CatBoost
+> **Автоматизированная система выявления патологий на компьютерных томограммах грудной клетки**
+> 
+> Интеллектуальное решение на базе CT-CLIP foundation model и CatBoost для массового скрининга медицинских изображений.
 
-**Краткое описание**
+## 📋 Описание решения
 
-Данный проект представляет инновационный подход к автоматической детекции патологий лёгких в 3D компьютерной томографии, основанный на использовании **мультимодальной foundation модели CT-CLIP** для извлечения семантических признаков и последующей **высокоточной классификации с помощью CatBoost**. 
+CT Pathology Detection System представляет собой production-ready систему для автоматического анализа медицинских изображений (DICOM и NIfTI) с целью выявления снимков с патологиями в исследованиях КТ органов грудной клетки.
 
-Система демонстрирует эффективность современных подходов transfer learning в медицинской визуализации, достигая клинически значимого качества классификации при относительно ограниченных вычислительных ресурсах и данных.
+## 🏆 Производительность модели
 
-### 🏆 **Основные достижения:**
-- **95%** успешная обработка КТ исследований  
-- **~3-5 секунд** время анализа одного исследования
-- **0.81+ AUC** ожидаемое качество на тестовых данных
-- **Foundation model** approach без необходимости обучения с нуля
+### 📊 **Сравнение подходов (ROC AUC)**
 
-***
+Наша система демонстрирует значительное улучшение по сравнению с baseline подходами:
 
-## 🧠 **Научная основа и архитектура**
+| 🔬 **Подход** | 🎯 **ROC AUC** | 📈 **Улучшение** | 💡 **Описание** |
+|---------------|----------------|-------------------|------------------|
+| **MedVAE3D Baseline** | `0.51` | — | Автоэнкодер для аномальных паттернов |
+| **CT-CLIP Classifier** | `~0.51` | — | Прямая классификация на 18 классов |
+| **CatBoost + CT-CLIP** | `0.75` | `+47%` | Наш промежуточный результат |
+| **🚀 Финальная система** | `0.86` | `+69%` | **CT-CLIP + CatBoost + Optimization** |
 
-### **Теоретический фундамент**
+### 🎯 **Детальные метрики производительности**
 
-Решение базируется на прорывной работе **Hamamci et al. (2024)** *"Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography"* ([arXiv:2403.17834](https://arxiv.org/abs/2403.17834)), которая представляет первую **мультимодальную foundation модель для 3D медицинской визуализации**.
+#### **🏁 TEST SET (Тестовая выборка - финальный результат)**
+Accuracy: 79.50% ✅ | ROC AUC: 86.42% 🔥
+Precision: 80.21% 🎯 | PR AUC: 88.33% 🔥
+Recall: 84.62% 📊 | F1-Score: 82.35% ⭐
+Sensitivity: 84.62% | Specificity: 72.86%
 
-### **🔬 CT-CLIP Foundation Model**
+### 🎯 Назначение системы:
+- **Массовый скрининг** - обработка больших объёмов медицинских данных
+- **Поддержка принятия решений** - помощь врачам-рентгенологам
 
-**CT-CLIP** — это революционная архитектура, обученная на **контрастивном обучении** между 3D КТ изображениями и соответствующими текстовыми радиологическими заключениями.
+### 🚀 Технологический стек:
+- **AI Models**: CT-CLIP (Foundation Model) + CatBoost Classifier
+- **Backend**: FastAPI + Core Processing Pipeline
+- **Containerization**: Docker + Docker Compose
+- **Data Processing**: PyTorch, MONAI, SimpleITK, nibabel
 
-#### **Ключевые характеристики модели:**
+## ✨ Основные возможности
 
-- **📊 Масштаб обучения**: 25,692 неконтрастных КТ исследований грудной клетки от 21,304 уникальных пациентов из датасета **CT-RATE**
-- **🧬 Семантическое кодирование**: 512-мерные векторные представления, инкорпорирующие клинически значимые паттерны патологий  
-- **🎯 Zero-shot capabilities**: Возможность классификации без дополнительного обучения на специфических задачах
-- **🏥 Клиническая валидация**: Превосходит supervised модели на внешних тестовых наборах
+### 📊 **Функциональные возможности:**
+- ✅ Обработка ZIP архивов с DICOM сериями и NIfTI файлами
+- ✅ Автоматическое выявление патологий с оценкой вероятности (0.0-1.0)
+- ✅ Генерация детализированных Excel отчётов согласно требованиям ТЗ
+- ✅ Локализация выявленных патологий в координатах (x,y,z)
+- ✅ REST API для программной интеграции
+- ✅ Web интерфейс для интерактивного использования
+- ✅ Robust error handling и детальная отчётность об ошибках
 
-#### **Архитектурные компоненты:**
+### 📈 **Производительность:**
+- **Время обработки**: ≤ 10 минут на одно исследование
+- **Поддерживаемые форматы**: DICOM (.dcm), NIfTI (.nii, .nii.gz)
+- **Выходной формат**: Excel (.xlsx) с детальной статистикой
 
-**🔹 3D Vision Transformer (CT-ViT):**
-```
-- Patch-based обработка 3D объёмов размером 480×480×240
-- Spatial transformer depth: 4 слоя
-- Temporal transformer depth: 4 слоя  
-- Multi-head attention: 8 головок
-- Embedding dimension: 512D semantic space
-- Параметров модели: ~438M
-```
+### ⚠️ **Ограничения системы:**
+- Система предназначена только для КТ исследований грудной клетки
+- Требуется GPU с поддержкой CUDA для оптимальной производительности
+- Система предоставляет вспомогательную информацию, окончательное решение принимает врач
 
-**🔹 Text Transformer:**
-```
-- BERT-based архитектура для обработки радиологических отчётов
-- Совместное обучение с vision encoder через contrastive loss
-- Semantic alignment между визуальными и текстовыми представлениями
-```
+## 🖥️ Системные требования
 
-**🔹 Contrastive Learning Framework:**
-```python
-# Ключевой принцип CT-CLIP
-similarity_positive = cosine_similarity(image_embedding, paired_text_embedding)  # Максимизируется
-similarity_negative = cosine_similarity(image_embedding, unpaired_text_embedding)  # Минимизируется
-```
+### **Рекомендуемые требования:**
+- **GPU**: NVIDIA GPU с 8GB+ VRAM (Tesla T4, V100, RTX 3080+)
+- **CUDA**: версия 11.8+
+- **RAM**: 32GB+
+- **CPU**: 8+ cores
+- **Disk Space**: 100GB+ (NVMe SSD предпочтительно)
 
-### **⚡ Градиентный бустинг (CatBoost)**
+### **Сетевые требования:**
+- Доступ к интернету для загрузки Docker образов
+- Порты 8000 (API) и 7860 (Web UI) должны быть свободны
 
-**Вторая стадия pipeline** использует извлечённые CT-CLIP embeddings для финальной классификации:
-
-- **🎪 Алгоритм**: CatBoost с GPU ускорением
-- **📋 Задача**: Бинарная классификация (норма vs патология) 
-- **⚙️ Оптимизация**: Гиперпараметры настроены для медицинских данных
-- **🎯 Focus**: Максимизация чувствительности (recall) для минимизации false negatives
-
-***
-
-## 📋 **Используемые датасеты**
-
-### **Основные источники данных:**
-
-| Датасет | Описание | Объём | Источник |
-|---------|----------|-------|----------|
-| **MosMedData КТ с признаками рака лёгкого тип 4** | КТ с онкологическими патологиями | ~400 исследований | [mosmed.ai](https://mosmed.ai/datasets/datasets/mosmeddata-kt-s-priznakami-raka-legkogo-tip-viii/) |
-| **MosMedData КТ COVID-19** | КТ с признаками вирусной пневмонии | ~500 исследований | [mosmed.ai](https://mosmed.ai/datasets/datasets/mosmeddata-kt-s-priznakami-koronavirusnoi-infektsii-covid-19-tip-i/) |
-| **Дополнительные открытые датасеты** | Разнообразные патологии лёгких | ~282 исследования | Различные источники |
-
-**📊 Общий объём данных**: **1,182 КТ исследования грудной клетки**
-
-### **Статистика распределения:**
-```
-Разделение данных:
-├── Train: 788 исследований (66.6%)
-├── Validation: 225 исследований (19.0%) 
-└── Test: 169 исследований (14.3%)
-
-Распределение классов:
-├── Норма: ~40-45%
-└── Патология: ~55-60%
-```
-
-***
-
-## 🔧 **Pipeline обработки**
-
-```mermaid
-graph TD
-    A[3D КТ объём (.nii.gz)] --> B[Preprocessing]
-    B --> C[Нормализованный тензор 480×480×240]
-    C --> D[CT-CLIP Vision Encoder]
-    D --> E[512-мерный semantic embedding]
-    E --> F[CatBoost Classifier]
-    F --> G[Вероятность патологии + Binary prediction]
-    
-    B1[Text Guidance] --> D
-    B1 -.-> H["'chest computed tomography scan for pathology detection'"]
-    
-    style A fill:#e1f5fe
-    style G fill:#e8f5e8
-    style D fill:#fff3e0
-    style F fill:#f3e5f5
-```
-
-### **Детальное описание этапов:**
-
-#### **🔹 1. Preprocessing (6-8 секунд)**
-```python
-# Основные операции предобработки:
-1. Загрузка NIfTI файла с помощью nibabel
-2. Ресэмплирование до целевого разрешения (1.5, 0.75, 0.75) мм
-3. Изменение размера до 480×480×240 вокселей
-4. Windowing: применение HU window (-1000, 1000)
-5. Нормализация в диапазон [0, 1]
-6. Конвертация в PyTorch tensor для GPU
-```
-
-#### **🔹 2. Feature Extraction (0.5-1.5 секунд)**
-```python
-# CT-CLIP inference pipeline:
-text_guidance = "chest computed tomography scan for pathology detection"
-embeddings = ct_clip_model(
-    volume_tensor,      # 3D CT volume
-    text_tokens,        # Tokenized guidance text  
-    latents=True        # Return 512D embeddings
-)
-```
-
-#### **🔹 3. Classification (<0.1 секунды)**
-```python
-# CatBoost prediction:
-probability = catboost_model.predict_proba(embedding)[:, 1]
-prediction = int(probability >= threshold)  # Configurable threshold
-```
-
-***
-
-## 🎯 **Ключевые преимущества подхода**
-
-### **⚡ Вычислительная эффективность**
-- **Быстрый inference**: 3-5 секунд на КТ исследование
-- **GPU оптимизация**: Эффективное использование CUDA для CT-CLIP
-- **Масштабируемость**: Batch processing для множественных исследований
-
-### **🎪 Высокое качество**
-- **Foundation model**: Использование предобученных на 25K+ исследований признаков
-- **Semantic understanding**: Модель понимает медицинскую терминологию и паттерны
-- **Robust generalization**: Хорошая генерализация на внешних датасетах
-
-### **🏥 Клиническая применимость**
-- **High sensitivity**: Оптимизация для минимизации false negatives
-- **Интерпретируемость**: CatBoost предоставляет feature importance analysis
-- **Стабильность**: Robust обработка различных протоколов сканирования
-
-***
-
-## 💻 **Системные требования**
-
-### **🖥️ Рекомендуемая конфигурация**
-```
-GPU: NVIDIA V100 (16GB VRAM) или выше
-CPU: Intel/AMD 8+ cores, 3.0+ GHz  
-RAM: 32GB DDR4
-Storage: 100GB SSD (для датасетов и models)
-OS: Ubuntu 20.04+ / CentOS 8+ / macOS 12+
-```
-
-### **⚙️ Минимальная конфигурация**
-```
-GPU: NVIDIA T4 (16GB VRAM)
-CPU: Intel/AMD 4+ cores, 2.5+ GHz
-RAM: 16GB DDR4  
-Storage: 50GB available space
-Python: 3.10+
-CUDA: 11.8+
-```
-
-### **📊 Производительность по конфигурациям**
-
-| Конфигурация | Время на исследование | Пропускная способность |
-|--------------|------------------------|------------------------|
-| **V100 16GB** | ~3.2 секунды | ~1,125 исследований/час |
-| **A100 40GB** | ~2.1 секунды | ~1,714 исследований/час |
-| **T4 16GB** | ~5.8 секунд | ~621 исследование/час |
-| **RTX 4090** | ~2.8 секунд | ~1,285 исследований/час |
-
-***
-
-## 🚀 **Быстрый старт**
-
-### **1. Установка зависимостей**
-```bash
-# Клонирование репозитория
-git clone https://github.com/username/ct-pathology-detection.git
-cd ct-pathology-detection
-
-# Установка зависимостей
-pip install -r requirements.txt
-
-# Или используя conda
-conda env create -f environment.yml
-conda activate ct-pathology
-```
-
-### **2. Загрузка предобученных моделей**
-```bash
-# Скачивание CT-CLIP модели (2.1GB)
-wget https://github.com/ibrahimethemhamamci/CT-CLIP/releases/download/v1.0/CT_LiPro_v2.pt \
-  -P ./models/
-
-# Скачивание обученной CatBoost модели
-wget https://your-models-host.com/catboost_pathology_classifier.cbm \
-  -P ./models/
-```
-
-### **3. Запуск inference**
-```bash
-# Обработка одного исследования
-python inference.py \
-  --input_path /path/to/ct_scan.nii.gz \
-  --output_path results.xlsx \
-  --model_path ./models/catboost_pathology_classifier.cbm
-
-# Batch processing
-python batch_inference.py \
-  --input_dir /path/to/ct_scans/ \
-  --output_path batch_results.xlsx \
-  --num_workers 4
-```
-
-### **4. Docker deployment**
-```bash
-# Сборка образа
-docker build -t ct-pathology-detection .
-
-# Запуск контейнера
-docker run -it --gpus all \
-  -v /path/to/data:/app/data \
-  -v /path/to/results:/app/results \
-  ct-pathology-detection
-```
-
-***
-
-## 📁 **Структура проекта**
+## 🚀 Быстрый старт (Quick Start)
 
 ```
+### Запуск системы
+```
+# Запуск через Docker Compose (рекомендуется)
+
+docker-compose up -d
+
+# Проверка статуса сервисов
+
+docker-compose ps
+
+```
+
+### Использование системы**
+
+#### **REST API:**
+```
+
+
+# Загрузка файлов через API
+
+curl -X POST "http://localhost:8000/api/v1/process" \
+-F "files=@study1.zip" \
+-F "files=@study2.zip"
+
+# Проверка статуса обработки
+
+curl "http://localhost:8000/api/v1/status/{task_id}"
+
+# Скачивание результатов
+
+curl "http://localhost:8000/api/v1/download/{task_id}" -o results.xlsx
+
+```
+
+### **Шаг 5: Пример результата**
+
+После обработки вы получите Excel файл со следующей структурой:
+
+| path_to_study | study_uid | probability_of_pathology | pathology | processing_status |
+|---------------|-----------|-------------------------|-----------|-------------------|
+| study_001/    | 1.2.3.4.5 | 0.8234                 | 1         | Success          |
+| study_002/    | 1.2.3.4.6 | 0.1456                 | 0         | Success          |
+
+## 📁 Структура проекта
+
+```
+
 ct-pathology-detection/
+├── 📄 README.md                    \# Этот файл
+├── 📄 docker-compose.yml           \# Оркестрация сервисов
+├── 📄 Dockerfile                   \# Образ приложения
+├── 📄 requirements.txt             \# Python зависимости
+├── 📄 .env.example                 \# Пример переменных окружения
 │
-├── 📁 src/                          # Исходный код
-│   ├── 🐍 preprocessing.py          # Предобработка CT данных
-│   ├── 🧠 feature_extraction.py     # CT-CLIP feature extraction
-│   ├── 🎯 model.py                  # CatBoost classifier wrapper
-│   ├── 📊 evaluation.py             # Метрики и валидация
-│   └── 🛠️ utils.py                  # Вспомогательные функции
+├── 📂 src/                         \# Исходный код системы
+│   ├── 📄 __init__.py             \# Инициализация пакета
+│   ├── 📄 preprocessing.py         \# Предобработка медицинских данных
+│   ├── 📄 feature_extraction.py   \# CT-CLIP feature extraction
+│   ├── 📄 model.py                \# CatBoost классификатор
+│   │
+│   ├── 📂 notebooks/ \# Папка с юпитер ноутбуками, в которых велась работа над проектом
+│   ├── 📄 01_data_download_and_unpack.ipynb \# Загрузка, распаковка и первое знакомство с данными
+│   ├── 📄 02_preprocessing_ct.ipynb \# Здесь тестируем модуль для предобработки данных
+│   ├── 📄 03_medvae_baseline_anomaly_detection.ipynbpy #\ Эксперименты с моделью MedVae3d
+│   ├── 📄 04_ct_clip_pipeline.py #\ Эксперименты с ct_clip - предпосылки, что при увеличении количества обучающих данных подход может сработать
+│   ├── 📄 final.ipynb #\ Финальный эксперимент с ct-clip (1182 томов использовано на обучение/валидацию/тестирование)
+│   ├── 📄 final&autogluon.ipynb #\ Быстрое тестирование auto ml на извлеченных эмбедингах.
+│   │   
+│   ├── 📂 pipeline/               \# Core processing pipeline
+│   │   ├── 📄 core_pipeline.py    \# Главный обработчик
+│   │   ├── 📄 data_models.py      \# Модели данных
+│   │   ├── 📄 data_discovery.py   \# Обнаружение медицинских данных
+│   │   └── 📄 volume_loader.py    \# Загрузка медицинских томов
+│   │
+│   ├── 📂 api/                    \# REST API
+│   │   ├── 📄 main.py             \# FastAPI приложение
+│   │   └── 📄 models.py           \# API модели данных
+│   │
+│   │
+│   └── 📂 CTPreprocessor/         \# Дополнительные утилиты
+│       └── 📄 ct_preprocessor.py  \# Robust DICOM/NIfTI loading
 │
-├── 📁 models/                       # Предобученные модели
-│   ├── 🤖 CT_LiPro_v2.pt           # CT-CLIP foundation model
-│   └── 🌳 catboost_classifier.cbm   # Обученный CatBoost
+├── 📂 models/                     \# Предобученные модели
+│   ├── 📄 CTLiProv2.pt           \# CT-CLIP checkpoint (~2GB)
+│   └── 📄 catboost_model.cbm     \# CatBoost модель (~10MB)
 │
-├── 📁 data/                         # Данные и конфигурации
-│   ├── 📁 raw/                      # Исходные DICOM/NIfTI файлы
-│   ├── 📁 processed/                # Предобработанные данные
-│   └── 📁 embeddings/               # Извлечённые embeddings
+├── 📂 docs/                       \# Документация
+│   ├── 📄 deployment_guide.md     \# Руководство по развертыванию
+│   ├── 📄 user_manual.md          \# Руководство пользователя
+│   └── 📄 api_reference.md        \# Справочник API
 │
-├── 📁 notebooks/                    # Jupyter notebooks для исследований
-│   ├── 📓 01_data_exploration.ipynb # Анализ данных
-│   ├── 📓 02_preprocessing.ipynb    # Демонстрация предобработки
-│   ├── 📓 03_training_pipeline.ipynb # Полный pipeline обучения
-│   └── 📓 04_evaluation.ipynb       # Анализ результатов
-│
-├── 📁 configs/                      # Конфигурационные файлы
-│   ├── ⚙️ model_config.yaml        # Параметры моделей
-│   └── ⚙️ training_config.yaml     # Параметры обучения
-│
-├── 📁 docker/                       # Docker конфигурации
-│   ├── 🐳 Dockerfile               # Основной образ
-│   ├── 🐳 docker-compose.yml       # Multi-service setup
-│   └── 📜 requirements.txt         # Python зависимости
-│
-├── 📁 scripts/                      # Utility scripts
-│   ├── 🔄 train.py                 # Скрипт обучения
-│   ├── 🔍 inference.py             # Single inference
-│   ├── 📦 batch_inference.py       # Batch processing
-│   └── 📊 evaluate.py              # Evaluation script
-│
-├── 📁 tests/                        # Unit tests
-│   ├── 🧪 test_preprocessing.py    # Тесты предобработки
-│   ├── 🧪 test_feature_extraction.py # Тесты CT-CLIP
-│   └── 🧪 test_model.py            # Тесты классификации
-│
-├── 📋 README.md                     # Этот файл
-├── 📄 requirements.txt              # Python зависимости
-├── ⚖️ LICENSE                       # MIT License
-└── 📊 final.ipynb                   # Основной notebook с полным pipeline
+├── 📂 tests/                      \# Тесты
+    ├── 📄 test_pipeline.py        \# Тесты core pipeline
+    └── 📄 test_api.py             \# Тесты API
+
 ```
 
-## 🏥 **Клинические применения**
+## 📖 Описание основных файлов
 
-### **🎯 Основные сценарии использования**
+### **🔧 Core Processing:**
+- **`src/pipeline/core_pipeline.py`** - Главный класс `CTPathologyPipeline` для обработки ZIP архивов
+- **`src/preprocessing.py`** - Функции предобработки медицинских изображений под CT-CLIP
+- **`src/feature_extraction.py`** - CT-CLIP feature extractor с поддержкой batch processing
+- **`src/model.py`** - CatBoost classifier wrapper с методами train/predict
 
-1. **Первичный скрининг**: Автоматическая сортировка КТ исследований на "требующие внимания" и "вероятно нормальные"
+### **🌐 API & Web:**
+- **`src/api/main.py`** - FastAPI приложение с эндпоинтами `/process`, `/status`, `/download`
+- **`src/web/gradio_interface.py`** - Gradio web интерфейс для интерактивного использования
 
-2. **Поддержка принятия решений**: Помощь рентгенологам в выявлении потенциальных патологий
+### **🐳 Deployment:**
+- **`docker-compose.yml`** - Оркестрация сервисов (API + Web + Redis)
+- **`Dockerfile`** - Multi-stage build с оптимизацией размера образа
+- **`requirements.txt`** - Точные версии всех Python зависимостей
 
-3. **Quality assurance**: Проверка пропущенных патологий в routine исследованиях
+### **📊 Models:**
+- **`models/CTLiProv2.pt`** - Предобученная CT-CLIP модель (Foundation Model)
+- **`models/catboost_model.cbm`** - Обученный CatBoost классификатор
 
-4. **Emergency triage**: Быстрая приоритизация исследований в экстренных ситуациях
+## 🛟 Поддержка и документация
 
-### **⚠️ Ограничения и рекомендации**
+### **📚 Дополнительная документация:**
+- [📖 Deployment Guide](docs/deployment_guide.md) - Подробное руководство по развертыванию
+- [👥 User Manual](docs/user_manual.md) - Руководство пользователя с примерами
+- [🔧 API Reference](docs/api_reference.md) - Полная документация API
 
-- **Не заменяет** профессиональное заключение врача-рентгенолога
-- **Требует валидации** на специфических клинических популяциях  
-- **Оптимален** для использования как вспомогательный инструмент
-- **Рекомендуется** регулярное обновление моделей на новых данных
+### **🐛 Решение проблем:**
 
-***
-
-## 🐳 **Docker Deployment**
-
-### **Основной Dockerfile**
-```dockerfile
-FROM nvidia/cuda:11.8-devel-ubuntu20.04
-
-# Установка системных зависимостей
-RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip \
-    libgl1-mesa-glx libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Python зависимости
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Копирование кода
-COPY . .
-
-# Загрузка моделей
-RUN python scripts/download_models.py
-
-EXPOSE 8000
-
-# Запуск API сервиса
-CMD ["python", "api/main.py"]
+# Просмотр логов сервисов
 ```
-
-### **Docker Compose для полного стека**
-```yaml
-version: '3.8'
-
-services:
-  ct-pathology-api:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./results:/app/results
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-      - MODEL_PATH=/app/models/
-      
-  gradio-demo:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.gradio
-    ports:
-      - "7860:7860"
-    depends_on:
-      - ct-pathology-api
-    environment:
-      - API_URL=http://ct-pathology-api:8000
+docker-compose logs -f
 ```
-
-***
-
-## 📚 **Научные ссылки и благодарности**
-
-### **Ключевые публикации**
-
-1. **Hamamci, I.E., et al.** (2024). *"Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography."* arXiv preprint arXiv:2403.17834. [[Paper](https://arxiv.org/abs/2403.17834)]
-
-2. **Wang, C., et al.** (2023). *"CT-ViT: 3D Vision Transformer for Chest CT Volume Analysis."* Medical Image Analysis.
-
-3. **Prokhorenkova, L., et al.** (2018). *"CatBoost: unbiased boosting with categorical features."* NeurIPS 2018.
-
-### **Датасеты**
-
-- **MosMedData**: Московский департамент здравоохранения [[Website](https://mosmed.ai/datasets/)]
-- **CT-RATE Dataset**: Hamamci et al., 25,692 КТ исследований с радиологическими отчётами
-
-### **Благодарности**
-
-Выражаем благодарность:
-- **Команде CT-CLIP** за открытый код и предобученные модели
-- **MosMedData initiative** за предоставление медицинских датасетов  
-- **CatBoost team** за высококачественную библиотеку градиентного бустинга
-- **PyTorch community** за framework и ecosystem
-
-***
-
-## 📄 **Лицензия**
-
-Данный проект распространяется под лицензией **MIT License**.
+# Перезапуск сервисов
+```
+docker-compose restart
+```
+# Полная переустановка
+```
+docker-compose down -v
+docker-compose up -d --build
 
 ```
-MIT License
-
-Copyright (c) 2024 CT Pathology Detection Team
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software...
-```
-
-**Важно**: Предобученная модель CT-CLIP может иметь отдельную лицензию. Пожалуйста, ознакомьтесь с [оригинальным репозиторием CT-CLIP](https://github.com/ibrahimethemhamamci/CT-CLIP).
