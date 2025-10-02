@@ -1,7 +1,6 @@
-# src/pipeline/data_discovery.py
 """
-Service для обнаружения медицинских данных в ZIP архивах
-Использует ваш existing ct_preprocessor.py
+Service для обнаружения медицинских исследований в ZIP архивах.
+Использует существующий ct_preprocessor.py для сканирования.
 """
 import logging
 import zipfile
@@ -9,63 +8,115 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
 import pydicom
 import nibabel as nib
 import os
 
 from .data_models import StudyInfo, DataType
 
+
 class DataDiscoveryService:
-    """Обнаружение и классификация медицинских данных"""
+    """
+    Сервис для обнаружения медицинских данных в ZIP архивах.
+    
+    Поддерживает:
+    - DICOM серии (все серии в архиве)
+    - NIfTI файлы
+    """
     
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
     
-    def discover_studies_in_zip(self, zip_path: str, extract_dir: str) -> List[StudyInfo]:
-        """Обнаружение исследований в ZIP архиве"""
+    def discover_studies_in_zip(
+        self, 
+        zip_path: str, 
+        extract_dir: str
+    ) -> List[StudyInfo]:
+        """
+        Обнаруживает все медицинские исследования в ZIP архиве.
         
-        self.logger.info(f"🔍 Discovering studies in {zip_path}")
+        Args:
+            zip_path: Путь к ZIP архиву
+            extract_dir: Директория для распаковки
+            
+        Returns:
+            List[StudyInfo]: Список найденных исследований
+        """
+        self.logger.info(f"Discovering studies in {zip_path}")
         
         try:
-            # Извлекаем архив
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_dir)
-                
-            # Используем ваш discover_inputs_robust
+            
             from src.CTPreprocessor.ct_preprocessor import discover_inputs_robust
+            
             raw_inputs = discover_inputs_robust(Path(extract_dir), self.logger)
             
-            # Конвертируем в наши StudyInfo объекты
             studies = []
             for raw_input in raw_inputs:
                 study_info = self._convert_raw_input_to_study_info(raw_input)
                 if study_info:
                     studies.append(study_info)
-                    
-            self.logger.info(f"✅ Found {len(studies)} studies in {zip_path}")
+            
+            self.logger.info(f"Found {len(studies)} studies in {zip_path}")
+            
             return studies
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to discover studies in {zip_path}: {e}")
-            return []
+            self.logger.error(f"Failed to discover studies: {e}")
+            raise
     
-    def _convert_raw_input_to_study_info(self, raw_input: Dict[str, Any]) -> Optional[StudyInfo]:
-        """Конвертация из discover_inputs_robust в StudyInfo"""
+    def _convert_raw_input_to_study_info(
+        self, 
+        raw_input: Dict[str, Any]
+    ) -> Optional[StudyInfo]:
+        """
+        Конвертирует результат discover_inputs_robust в StudyInfo.
         
-        try:
-            input_kind = raw_input.get('kind', 'unknown')
+        Сохраняет file_list из raw_input в metadata для последующей
+        передачи в volume_loader.
+        
+        Args:
+            raw_input: Словарь с информацией об обнаруженном исследовании
             
-            if input_kind == 'dicom':
-                return self._process_dicom_input(raw_input)
-            elif input_kind == 'nifti':
-                return self._process_nifti_input(raw_input)
+        Returns:
+            StudyInfo или None при ошибке
+        """
+        try:
+            input_type = raw_input.get('type', 'unknown')
+            
+            if input_type == 'dicom_dir':
+                data_type = DataType.DICOM
+            elif input_type == 'nifti':
+                data_type = DataType.NIFTI
             else:
-                self.logger.warning(f"⚠️ Unknown input kind: {input_kind}")
+                self.logger.warning(f"Unknown input type: {input_type}")
                 return None
-                
+            
+            metadata = {
+                'input_type': input_type,
+            }
+            
+            if 'file_list' in raw_input:
+                metadata['file_list'] = raw_input['file_list']
+            
+            study_info = StudyInfo(
+                path_to_study=raw_input.get('path', ''),
+                study_uid=raw_input.get('study_uid', 'unknown'),
+                series_uid=raw_input.get('series_uid', 'unknown'),
+                data_type=data_type,
+                files_count=raw_input.get('files_count', 0),
+                file_size_mb=raw_input.get('file_size_mb', 0.0),
+                metadata=metadata,
+            )
+            
+            return study_info
+            
         except Exception as e:
-            self.logger.error(f"❌ Failed to convert raw input: {e}")
+            self.logger.error(f"Failed to convert raw input: {e}")
             return None
+
     
     def _process_dicom_input(self, raw_input: Dict[str, Any]) -> StudyInfo:
         """Обработка DICOM input"""

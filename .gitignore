@@ -17,3 +17,5 @@ data/
 *-checkpoint*
 *.ubj
 *.xlsx
+tests/test_data
+tests/test_results

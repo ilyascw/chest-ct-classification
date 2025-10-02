@@ -1,5 +1,5 @@
 """
-Data models для Core Pipeline
+Data models for Core Pipeline
 """
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict, Any, Tuple, Union
@@ -9,22 +9,36 @@ import uuid
 import json
 import numpy as np
 
+
 class DataType(Enum):
     """Тип медицинских данных"""
     DICOM = "dicom"
     NIFTI = "nifti"
     UNKNOWN = "unknown"
 
+
 class ProcessingStatus(Enum):
-    """Статус обработки"""
+    """Статус обработки исследования"""
     PENDING = "pending"
-    PROCESSING = "processing" 
+    PROCESSING = "processing"
     SUCCESS = "success"
     FAILURE = "failure"
 
+
 @dataclass
 class StudyInfo:
-    """Информация об исследовании из архива"""
+    """
+    Информация об обнаруженном медицинском исследовании.
+    
+    Attributes:
+        path_to_study: Путь к директории с исследованием
+        study_uid: Уникальный идентификатор исследования
+        series_uid: Уникальный идентификатор серии
+        data_type: Тип данных (DICOM/NIFTI)
+        files_count: Количество файлов в серии
+        file_size_mb: Размер файлов в МБ
+        metadata: Дополнительные метаданные
+    """
     path_to_study: str
     study_uid: str
     series_uid: str
@@ -34,15 +48,26 @@ class StudyInfo:
     metadata: Dict[str, Any]
     
     def __post_init__(self):
-        # Ensure UIDs are strings
-        if not self.study_uid or self.study_uid == 'unknown':
+        if not self.study_uid or self.study_uid == "unknown":
             self.study_uid = f"study_{uuid.uuid4().hex[:8]}"
-        if not self.series_uid or self.series_uid == 'unknown':
+        if not self.series_uid or self.series_uid == "unknown":
             self.series_uid = f"series_{uuid.uuid4().hex[:8]}"
+
 
 @dataclass
 class VolumeData:
-    """Загруженный и обработанный том"""
+    """
+    Загруженный медицинский том с метаданными.
+    
+    Attributes:
+        path: Путь к исходным данным
+        volume: 3D массив с данными тома
+        spacing: Размер вокселя (X, Y, Z) в мм
+        origin: Координаты начала координат
+        direction: Матрица направления осей
+        metadata: Дополнительные метаданные (включая RescaleSlope/Intercept)
+        preprocessing_info: Информация о предобработке
+    """
     path: Path
     volume: np.ndarray
     spacing: Tuple[float, float, float]
@@ -51,69 +76,94 @@ class VolumeData:
     metadata: Dict[str, Any]
     preprocessing_info: Dict[str, Any]
 
+
 @dataclass
 class FeatureVector:
-    """Извлеченные признаки"""
+    """
+    Извлечённые признаки из CT-CLIP.
+    
+    Attributes:
+        embeddings: 512-мерный вектор эмбеддингов
+        extraction_time: Время извлечения признаков (сек)
+        model_info: Информация о модели
+        text_prompt: Использованный текстовый промпт
+    """
     embeddings: np.ndarray
     extraction_time: float
     model_info: Dict[str, str]
     text_prompt: str
 
+
 @dataclass
 class ClassificationResult:
-    """Результат классификации"""
+    """
+    Результат классификации CatBoost.
+    
+    Attributes:
+        probability_of_pathology: Вероятность патологии [0, 1]
+        pathology_prediction: Бинарный прогноз (0 = норма, 1 = патология)
+        confidence_score: Уровень уверенности модели
+        model_version: Версия модели CatBoost
+        inference_time: Время инференса (сек)
+    """
     probability_of_pathology: float
-    pathology_prediction: int  # 0 or 1
+    pathology_prediction: int
     confidence_score: float
     model_version: str
     inference_time: float
 
+
 @dataclass
 class ProcessingResult:
-    """Финальный результат обработки для Excel отчёта"""
-    # Обязательные поля из ТЗ
+    """
+    Полный результат обработки одного исследования.
+    
+    Attributes:
+        path_to_study: Путь к исследованию
+        study_uid: Идентификатор исследования
+        series_uid: Идентификатор серии
+        probability_of_pathology: Вероятность патологии
+        pathology: Бинарный прогноз (0/1)
+        processing_status: Статус обработки
+        time_of_processing: Время обработки (сек)
+        error_details: Детали ошибки (если есть)
+        processing_steps_completed: Список завершённых этапов
+    """
     path_to_study: str
     study_uid: str
     series_uid: str
     probability_of_pathology: float
     pathology: int
-    processing_status: str  # "Success" or "Failure"
-    time_of_processing: float  # seconds
-    pathology_localization: str  # "x_min,x_max,y_min,y_max,z_min,z_max"
+    processing_status: str
+    time_of_processing: float
+    error_details: str = ""
+    processing_steps_completed: List[str] = None
     
-    # Дополнительные поля для отладки
-    error_details: Optional[str] = None
-    volume_shape: Optional[str] = None
-    embedding_norm: Optional[float] = None
-    processing_steps_completed: Optional[List[str]] = None
+    def __post_init__(self):
+        if self.processing_steps_completed is None:
+            self.processing_steps_completed = []
     
     def to_dict(self) -> Dict[str, Any]:
-        """Конвертация в словарь для Excel"""
-        result = asdict(self)
-        # Убираем None значения для cleaner Excel
-        return {k: v for k, v in result.items() if v is not None}
+        """Конвертация в словарь для Excel отчёта"""
+        return asdict(self)
+
 
 @dataclass
 class PipelineConfig:
-    """Конфигурация pipeline"""
-    # Модели
-    ctclip_checkpoint: str
+    """
+    Конфигурация pipeline.
+    
+    Attributes:
+        ct_clip_checkpoint: Путь к чекпоинту CT-CLIP
+        catboost_model: Путь к модели CatBoost
+        text_prompt: Текстовый промпт для CT-CLIP
+        device: Устройство для вычислений (cuda/cpu/auto)
+        max_workers: Количество параллельных потоков
+        log_level: Уровень логирования
+    """
+    ct_clip_checkpoint: str
     catboost_model: str
-    device: str = 'auto'
-    
-    # Обработка
-    max_workers: int = 4
-    timeout_per_study: int = 600  # 10 minutes
-    temp_dir: str = "/tmp/ct_processing"
-    
-    # CT-CLIP параметры
     text_prompt: str = "chest computed tomography scan for pathology detection"
-    target_spacing: Tuple[float, float, float] = (0.75, 0.75, 1.5)
-    target_shape: Tuple[int, int, int] = (480, 480, 240)
-    
-    # Классификация
-    classification_threshold: float = 0.5
-    
-    # Логирование
+    device: str = "auto"
+    max_workers: int = 4
     log_level: str = "INFO"
-    save_intermediate_results: bool = True

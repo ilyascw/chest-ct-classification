@@ -1,28 +1,43 @@
-# src/pipeline/volume_loader.py
 """
-Service для загрузки медицинских томов
-Использует ваши existing functions
+Service для загрузки медицинских томов из различных форматов.
+Использует существующие функции из ct_preprocessor.py
 """
 import logging
 import time
 import numpy as np
-import pandas as pd
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 from pathlib import Path
 
 from .data_models import StudyInfo, VolumeData, DataType
 
+
 class VolumeLoaderService:
-    """Универсальная загрузка медицинских томов"""
+    """
+    Сервис для загрузки медицинских томов.
+    
+    Поддерживает:
+    - DICOM серии через robust_load_dicom_volume
+    - NIfTI файлы через nibabel
+    """
     
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
     
     def load_volume_from_study(self, study_info: StudyInfo) -> VolumeData:
-        """Загрузка тома на основе StudyInfo"""
+        """
+        Загружает медицинский том на основе StudyInfo.
         
+        Args:
+            study_info: Информация об исследовании
+            
+        Returns:
+            VolumeData: Загруженный том с метаданными
+            
+        Raises:
+            ValueError: Если тип данных не поддерживается
+        """
         start_time = time.time()
-        self.logger.debug(f"📂 Loading volume: {study_info.study_uid}")
+        self.logger.debug(f"Loading volume {study_info.study_uid}")
         
         try:
             if study_info.data_type == DataType.DICOM:
@@ -33,110 +48,128 @@ class VolumeLoaderService:
                 raise ValueError(f"Unsupported data type: {study_info.data_type}")
             
             loading_time = time.time() - start_time
-            self.logger.debug(f"✅ Volume loaded in {loading_time:.2f}s: {volume_data.volume.shape}")
+            self.logger.debug(f"Volume loaded in {loading_time:.2f}s: {volume_data.volume.shape}")
             
             return volume_data
             
         except Exception as e:
             loading_time = time.time() - start_time
-            self.logger.error(f"❌ Failed to load volume ({loading_time:.2f}s): {e}")
+            self.logger.error(f"Failed to load volume ({loading_time:.2f}s): {e}")
             raise
     
     def _load_dicom_volume(self, study_info: StudyInfo) -> VolumeData:
-        """Загрузка DICOM серии используя ваш robust_load_dicom_volume"""
+        """
+        Загружает DICOM том через robust_load_dicom_volume.
         
-        try:
-            # Импортируем вашу функцию
-            from src.CTPreprocessor.ct_preprocessor import robust_load_dicom_volume
+        Извлекает file_list из study_info.metadata (если есть) и передаёт
+        в robust_load_dicom_volume для загрузки конкретной серии.
+        
+        Args:
+            study_info: Информация о DICOM исследовании
             
-            # Загружаем том
-            volume, metadata = robust_load_dicom_volume(
-                study_info.path_to_study,
-                self.logger
+        Returns:
+            VolumeData: Загруженный DICOM том
+        """
+        from src.CTPreprocessor.ct_preprocessor import robust_load_dicom_volume
+        
+        dicom_dir = Path(study_info.path_to_study)
+        
+        file_list = None
+        if 'file_list' in study_info.metadata:
+            file_list_str = study_info.metadata['file_list']
+            file_list = [Path(f) for f in file_list_str]
+            self.logger.debug(f"Using provided file_list with {len(file_list)} files")
+        
+        volume, metadata = robust_load_dicom_volume(
+            dicom_dir=dicom_dir,
+            file_list=file_list,
+            logger=self.logger
+        )
+        
+        spacing = metadata.get('spacing', (1.0, 1.0, 1.0))
+        origin = metadata.get('origin', (0.0, 0.0, 0.0))
+        direction = metadata.get('direction', np.eye(3).flatten())
+
+        if any(s <= 0 for s in spacing):
+            raise ValueError(
+                f"Invalid spacing detected: {spacing}. "
+                f"All spacing values must be positive."
             )
-            
-            # Извлекаем spacing, origin, direction из metadata
-            spacing = metadata.get('spacing', (1.0, 1.0, 1.0))
-            origin = metadata.get('origin', (0.0, 0.0, 0.0))
-            direction = metadata.get('direction', np.eye(3))
-            
-            # Дополнительная обработанная информация
-            preprocessing_info = {
-                'loader_method': 'robust_load_dicom_volume',
-                'original_shape': str(volume.shape),
-                'value_range': f"[{volume.min():.2f}, {volume.max():.2f}]",
-                'data_type': str(volume.dtype)
-            }
-            
-            return VolumeData(
-                path=study_info.path_to_study,
-                volume=volume,
-                spacing=spacing,
-                origin=origin,
-                direction=direction,
-                metadata=metadata,
-                preprocessing_info=preprocessing_info
+
+        if any(s > 100 for s in spacing):
+            self.logger.warning(
+                f"Unusually large spacing detected: {spacing} mm. "
+                f"This may indicate incorrect DICOM metadata."
             )
-            
-        except Exception as e:
-            self.logger.error(f"❌ DICOM loading failed: {e}")
-            raise RuntimeError(f"DICOM loading failed: {e}")
+ 
+        if isinstance(direction, (list, tuple)):
+            direction = np.array(direction).reshape(3, 3)
+        
+        volume_data = VolumeData(
+            path=dicom_dir,
+            volume=volume,
+            spacing=spacing,
+            origin=origin,
+            direction=direction,
+            metadata=metadata,
+            preprocessing_info={}
+        )
+        
+        return volume_data
     
     def _load_nifti_volume(self, study_info: StudyInfo) -> VolumeData:
-        """Загрузка NIfTI файла"""
+        """
+        Загружает NIfTI том через nibabel.
         
-        try:
-            import nibabel as nib
+        Args:
+            study_info: Информация о NIfTI файле
             
-            # Загружаем NIfTI
-            img = nib.load(study_info.path_to_study)
-            volume = img.get_fdata().astype(np.float32)
-            
-            # Извлекаем пространственную информацию
-            header = img.header
-            affine = img.affine
-            
-            # Spacing из pixdim
-            pixdim = header.get('pixdim')
-            if pixdim is not None and len(pixdim) >= 4:
-                spacing = (float(pixdim[1]), float(pixdim[2]), float(pixdim[3]))
-            else:
-                spacing = (1.0, 1.0, 1.0)
-            
-            # Origin и direction из affine matrix
-            origin = tuple(affine[:3, 3].astype(float))
-            direction = affine[:3, :3] / np.array(spacing)  # Normalize by spacing
-            
-            # Метаданные
-            metadata = {
-                'header': header,
-                'affine': affine,
-                'spacing': spacing,
-                'origin': origin,
-                'direction': direction,
-                'units': str(header.get('xyzt_units', 'unknown')),
-                'qform_code': int(header.get('qform_code', 0)),
-                'sform_code': int(header.get('sform_code', 0))
-            }
-            
-            # Preprocessing info
-            preprocessing_info = {
-                'loader_method': 'nibabel_load',
-                'original_shape': str(volume.shape),
-                'value_range': f"[{volume.min():.2f}, {volume.max():.2f}]",
-                'data_type': str(volume.dtype)
-            }
-            
-            return VolumeData(
-                path=study_info.path_to_study,
-                volume=volume,
-                spacing=spacing,
-                origin=origin,
-                direction=direction,
-                metadata=metadata,
-                preprocessing_info=preprocessing_info
+        Returns:
+            VolumeData: Загруженный NIfTI том
+        """
+        import nibabel as nib
+        
+        nifti_path = Path(study_info.path_to_study)
+        
+        nii_img = nib.load(str(nifti_path))
+        volume = nii_img.get_fdata()
+        
+        header = nii_img.header
+        spacing = tuple(header.get_zooms()[:3])
+        
+        if any(s <= 0 for s in spacing):
+            raise ValueError(
+                f"Invalid spacing in NIfTI header: {spacing}. "
+                f"All spacing values must be positive."
+            )
+
+        if any(s > 100 for s in spacing):
+            self.logger.warning(
+                f"Unusually large spacing in NIfTI: {spacing} mm. "
+                f"This may indicate incorrect header."
             )
             
-        except Exception as e:
-            self.logger.error(f"❌ NIfTI loading failed: {e}")
-            raise RuntimeError(f"NIfTI loading failed: {e}")
+        affine = nii_img.affine
+        
+        origin = tuple(affine[:3, 3])
+        direction = affine[:3, :3] / np.array(spacing)
+        
+        metadata = {
+            'spacing': spacing,
+            'origin': origin,
+            'affine': affine,
+            'RescaleSlope': 1.0,
+            'RescaleIntercept': 0.0,
+        }
+        
+        volume_data = VolumeData(
+            path=nifti_path,
+            volume=volume,
+            spacing=spacing,
+            origin=origin,
+            direction=direction,
+            metadata=metadata,
+            preprocessing_info={}
+        )
+        
+        return volume_data

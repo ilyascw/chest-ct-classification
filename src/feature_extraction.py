@@ -289,3 +289,7 @@ def create_ctclip_model_and_extractor(
     except Exception as e:
         logger.error(f"Ошибка создания CT-CLIP: {e}")
         raise
+        
+# Alias для обратной совместимости
+create_ct_clip_model_and_extractor = create_ctclip_model_and_extractor
+

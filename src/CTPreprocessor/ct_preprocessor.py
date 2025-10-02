@@ -189,23 +189,6 @@ def load_via_filelist_sitk(filelist: List[str]) -> Tuple[torch.Tensor, Dict[str,
     }
     return vol, meta
 
-def robust_load_dicom_volume(dicom_dir: str, logger: CTLogger) -> Tuple[torch.Tensor, Dict[str, Any]]:
-    """Робастная загрузка DICOM с fallback"""
-    try:
-        logger.debug(f"📖 Загрузка DICOM: {Path(dicom_dir).name}")
-        
-        uid, filelist = select_max_depth_uid(dicom_dir)
-        logger.debug(f"  🔍 Серия: {uid[:50]}..., файлов: {len(filelist)}")
-        
-        # Прямая загрузка через SimpleITK (надежнее чем ITKReader)
-        vol, meta = load_via_filelist_sitk(filelist)
-        logger.debug(f"  ✅ Загружено: {vol.shape}")
-        
-        return vol, meta
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки DICOM {dicom_dir}: {e}")
-        raise RuntimeError(f"Не удалось загрузить DICOM: {e}")
 
 def load_nifti_robust(filepath: str, logger: CTLogger) -> Tuple[torch.Tensor, Dict[str, Any]]:
     """Робастная загрузка NIfTI с fallback на nibabel"""
@@ -309,63 +292,214 @@ def extract_spacing_robust(meta: Dict[str, Any]) -> Optional[List[float]]:
 # ----------------------------
 # Обнаружение данных (ИСПРАВЛЕНО)
 # ----------------------------
-def discover_inputs_robust(input_root: Union[str, Path], logger: CTLogger) -> List[Dict[str, Any]]:
-    """ИСПРАВЛЕННОЕ обнаружение входных данных"""
-    input_root = Path(input_root)  # ИСПРАВЛЕНО: убрал [0]
-    inputs = []
+def get_all_series_in_dicom_dir(dicom_dir: Path) -> List[Tuple[str, List[Path]]]:
+    """
+    Получает все серии DICOM в директории с их файлами.
     
-    logger.info(f"🔍 Сканирование: {input_root}")
+    Сканирует директорию, группирует DICOM файлы по SeriesInstanceUID.
     
-    if not input_root.exists():
-        logger.error(f"❌ Директория не существует: {input_root}")
-        return inputs
+    Args:
+        dicom_dir: Путь к директории с DICOM файлами
+        
+    Returns:
+        List[Tuple[str, List[Path]]]: Список кортежей (series_uid, отсортированный_список_файлов)
+    """
+    import pydicom
     
-    # NIfTI файлы
-    logger.info("📁 Поиск NIfTI...")
-    nifti_count = 0
-    for pattern in ["*.nii", "*.nii.gz", "*.NII", "*.NII.GZ"]:
-        for nii_file in input_root.rglob(pattern):
-            if nii_file.is_file() and nii_file.stat().st_size > 1024:
-                inputs.append({
-                    "kind": "nifti",
-                    "path": str(nii_file),
-                    "source_id": f"nifti::{nii_file.name}",
-                })
-                nifti_count += 1
+    series_dict = {}
     
-    logger.info(f"  ✅ NIfTI: {nifti_count}")
-    
-    # DICOM директории
-    logger.info("📁 Поиск DICOM...")
-    dicom_dirs = set()
-    for pattern in ["*.dcm", "*.DCM"]:
-        for dcm_file in input_root.rglob(pattern):
-            if dcm_file.is_file() and dcm_file.stat().st_size > 512:
-                dicom_dirs.add(dcm_file.parent)
-    
-    dicom_count = 0
-    for dcm_dir in dicom_dirs:
+    for dcm_file in dicom_dir.rglob("*.dcm"):
         try:
-            uid, filelist = select_max_depth_uid(str(dcm_dir))
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+            series_uid = getattr(ds, 'SeriesInstanceUID', 'unknown')
             
-            if len(filelist) >= 5:  # Минимум 5 файлов
-                inputs.append({
-                    "kind": "dicom",
-                    "root": str(dcm_dir),
-                    "series_uid": uid,
-                    "filelist": filelist,
-                    "source_id": f"dicom::{dcm_dir.name}::{uid[:12]}",
-                })
-                dicom_count += 1
+            if series_uid not in series_dict:
+                series_dict[series_uid] = []
+            series_dict[series_uid].append(dcm_file)
             
-        except Exception as e:
-            logger.debug(f"  ⚠️ Пропуск {dcm_dir}: {e}")
+        except Exception:
             continue
     
-    logger.info(f"  ✅ DICOM: {dicom_count}")
-    logger.info(f"🎯 Всего: {len(inputs)}")
+    result = []
+    for series_uid, files in series_dict.items():
+        sorted_files = sorted(files, key=lambda x: x.name)
+        result.append((series_uid, sorted_files))
     
-    return inputs
+    return result
+
+
+def robust_load_dicom_volume(
+    dicom_dir: Path, 
+    file_list: Optional[List[Path]] = None,
+    logger: Optional[logging.Logger] = None
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """
+    Загрузка DICOM тома с извлечением метаданных.
+    
+    Если file_list предоставлен, загружает именно эти файлы.
+    Иначе выбирает серию с максимальным количеством файлов (fallback).
+    
+    Выполняет:
+    1. Загрузка серии через SimpleITK
+    2. Извлечение spacing, origin, direction
+    3. Извлечение RescaleSlope и RescaleIntercept из DICOM тегов
+    
+    Args:
+        dicom_dir: Путь к директории с DICOM файлами
+        file_list: Список файлов конкретной серии (опционально)
+        logger: Логгер для вывода информации
+        
+    Returns:
+        Tuple[np.ndarray, Dict]: (том, метаданные)
+        
+    Raises:
+        ValueError: Если не удалось загрузить том
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    try:
+        dicom_dir = Path(dicom_dir)
+        
+        if file_list is None:
+            uid, file_list = select_max_depth_uid(dicom_dir)
+            logger.info(f"Loading series {uid} with {len(file_list)} files")
+        else:
+            logger.info(f"Loading provided file list with {len(file_list)} files")
+        
+        if not file_list:
+            raise ValueError(f"No DICOM files found in {dicom_dir}")
+            
+        MAX_SLICES = 1000
+        
+        if len(file_list) > MAX_SLICES:
+            raise ValueError(
+                f"Series too large: {len(file_list)} slices (max {MAX_SLICES}). "
+                f"This may cause memory issues. Series skipped."
+            )            
+            
+        
+        first_dicom_path = file_list[0]
+        try:
+            import pydicom
+            ds = pydicom.dcmread(str(first_dicom_path), stop_before_pixels=True)
+            rescale_slope = float(getattr(ds, 'RescaleSlope', 1.0))
+            rescale_intercept = float(getattr(ds, 'RescaleIntercept', 0.0))
+            series_uid = getattr(ds, 'SeriesInstanceUID', 'unknown')
+        except Exception as e:
+            logger.warning(f"Failed to extract DICOM metadata: {e}. Using defaults.")
+            rescale_slope = 1.0
+            rescale_intercept = 0.0
+            series_uid = 'unknown'
+        
+        reader = sitk.ImageSeriesReader()
+        reader.SetFileNames([str(f) for f in file_list])
+        image = reader.Execute()
+        
+        volume = sitk.GetArrayFromImage(image)
+        
+        spacing = image.GetSpacing()
+        origin = image.GetOrigin()
+        direction = image.GetDirection()
+        
+        metadata = {
+            'spacing': spacing,
+            'origin': origin,
+            'direction': direction,
+            'series_uid': series_uid,
+            'num_slices': len(file_list),
+            'RescaleSlope': rescale_slope,
+            'RescaleIntercept': rescale_intercept,
+        }
+        
+        logger.info(f"Loaded volume: {volume.shape}, spacing: {spacing}")
+        logger.info(f"RescaleSlope: {rescale_slope}, RescaleIntercept: {rescale_intercept}")
+        
+        return volume, metadata
+        
+    except Exception as e:
+        logger.error(f"Failed to load DICOM volume: {e}")
+        raise ValueError(f"DICOM loading failed: {e}")
+
+
+def discover_inputs_robust(
+    input_dir: Path, 
+    logger: Optional[logging.Logger] = None
+) -> List[Dict[str, Any]]:
+    """
+    Обнаружение всех медицинских данных в директории.
+    
+    Поддерживаемые форматы:
+    - NIfTI (.nii, .nii.gz)
+    - DICOM серии (множественные .dcm файлы)
+    
+    Важно: Возвращает ВСЕ найденные серии с сохранением списков файлов.
+    
+    Args:
+        input_dir: Путь к директории для сканирования
+        logger: Логгер
+        
+    Returns:
+        List[Dict]: Список найденных исследований с метаданными и file_list
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    input_dir = Path(input_dir)
+    discovered_inputs = []
+    
+    nifti_files = list(input_dir.rglob("*.nii*"))
+    for nifti_path in nifti_files:
+        try:
+            file_size = nifti_path.stat().st_size / (1024 * 1024)
+            
+            discovered_inputs.append({
+                'type': 'nifti',
+                'path': str(nifti_path),
+                'file_size_mb': round(file_size, 2),
+                'files_count': 1,
+                'series_uid': f"nifti_{nifti_path.stem}",
+                'study_uid': f"study_{nifti_path.parent.name}",
+            })
+            
+            logger.info(f"Found NIfTI: {nifti_path.name}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to process NIfTI {nifti_path}: {e}")
+    
+    dicom_dirs = set()
+    for dcm_file in input_dir.rglob("*.dcm"):
+        dicom_dirs.add(dcm_file.parent)
+    
+    for dicom_dir in dicom_dirs:
+        try:
+            all_series = get_all_series_in_dicom_dir(dicom_dir)
+            
+            if not all_series:
+                logger.warning(f"No valid DICOM series found in {dicom_dir}")
+                continue
+            
+            for series_uid, file_list in all_series:
+                total_size = sum(f.stat().st_size for f in file_list) / (1024 * 1024)
+                
+                discovered_inputs.append({
+                    'type': 'dicom_dir',
+                    'path': str(dicom_dir),
+                    'series_uid': series_uid,
+                    'study_uid': f"study_{dicom_dir.name}",
+                    'files_count': len(file_list),
+                    'file_size_mb': round(total_size, 2),
+                    'file_list': [str(f) for f in file_list],
+                })
+                
+                logger.info(f"Found DICOM series: {series_uid} ({len(file_list)} files)")
+        
+        except Exception as e:
+            logger.warning(f"Failed to process DICOM dir {dicom_dir}: {e}")
+    
+    logger.info(f"Total discovered: {len(discovered_inputs)} input(s)")
+    
+    return discovered_inputs
 
 # ----------------------------
 # Робастный пайплайн (БЕЗ проблемных MONAI трансформов)
