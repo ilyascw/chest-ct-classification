@@ -114,15 +114,15 @@ curl "http://localhost:8000/api/v1/download/{task_id}" -o results.xlsx
 
 
 
-### **Шаг 5: Пример результата**
+### Пример результата**
 
 После обработки вы получите Excel файл со следующей структурой:
-```
-| path_to_study | study_uid | probability_of_pathology | pathology | processing_status |
-|---------------|-----------|-------------------------|-----------|-------------------|
-| study_001/    | 1.2.3.4.5 | 0.8234                 | 1         | Success          |
-| study_002/    | 1.2.3.4.6 | 0.1456                 | 0         | Success          |
-```
+
+| path_to_study | study_uid |   series_uid   |probability_of_pathology    | pathology   | processing_status |
+|---------------|-----------|----------------|----------------------------|-------------|-------------------|
+| study_001/    | 1.2.3.4.5 |                |0.8234                      | 1           | Success           |
+| study_002/    | 1.2.3.4.6 |                |0.1456                      | 0           | Success           |
+
 ## 📁 Структура проекта
 
 
