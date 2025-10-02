@@ -39,16 +39,24 @@ def resize_array(
     return resized_array
 
 
-def preprocess_nifti(nii_path: Union[str, Path], meta_row: pd.Series) -> torch.Tensor:
+def preprocess_nifti(nii_path: Union[str, Path], meta_row: pd.Series, Volume=False) -> torch.Tensor:
     """
     Preprocess NIfTI file exactly as in original data_inference_nii.py
     """
-    # Load NIfTI image
-    nii_img = nib.load(str(nii_path))
-    img_data = nii_img.get_fdata()
     
-    # Get metadata
-    filename = Path(nii_path).name
+    if not Volume:
+        
+        # Load NIfTI image
+        nii_img = nib.load(str(nii_path))
+        img_data = nii_img.get_fdata()
+    
+        # Get metadata
+        filename = Path(nii_path).name
+        
+    else:
+        
+        img_data = nii_path
+        
     slope = float(meta_row['RescaleSlope'])
     intercept = float(meta_row['RescaleIntercept'])
     

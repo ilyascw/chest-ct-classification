@@ -4,4 +4,16 @@ local_dev/temp/
 *.log
 .datasphere/
 data/
-models/
+*.pt
+*.cbm
+*.png
+*.pkl
+*.json
+*.txt
+*.tsv
+*.csv
+*.pyc
+*.tfevents
+*-checkpoint*
+*.ubj
+*.xlsx
