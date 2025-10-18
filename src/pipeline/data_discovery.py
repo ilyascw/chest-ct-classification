@@ -241,13 +241,28 @@ class DataDiscoveryService:
         try:
             img = nib.load(str(nifti_path))
             header = img.header
+            # Безопасная обработка descrip
+            descrip_value = header.get('descrip', b'')
+            descrip_str = ""
+            try:
+                if isinstance(descrip_value, bytes):
+                    descrip_str = descrip_value.decode('utf-8', errors='ignore')
+                elif hasattr(descrip_value, 'tobytes'):
+                    descrip_str = descrip_value.tobytes().decode('utf-8', errors='ignore')
+                else:
+                    descrip_str = str(descrip_value)
+            except Exception as e:
+                self.logger.debug(f"Error processing descrip: {e}")
+                descrip_str = str(descrip_value)
+
             metadata.update({
                 'shape': str(img.shape),
                 'dtype': str(img.get_fdata().dtype),
                 'pixdim': str(header.get('pixdim')),
                 'qform_code': str(header.get('qform_code')),
                 'sform_code': str(header.get('sform_code')),
-                'descrip': str(header.get('descrip', b'').decode('utf-8', errors='ignore'))
+
+                'descrip': descrip_str
             })
         except Exception as e:
             self.logger.warning(f"Failed to read NIfTI metadata from {nifti_path}: {e}")
