@@ -19,3 +19,4 @@ data/
 *.xlsx
 tests/test_data
 tests/test_results
+.DS_Store

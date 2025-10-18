@@ -6,7 +6,7 @@
 
 ## 📋 Описание решения
 
-CT Pathology Detection System представляет собой production-ready систему для автоматического анализа медицинских изображений (DICOM и NIfTI) с целью выявления снимков с патологиями в исследованиях КТ органов грудной клетки.
+CT Pathology Detection System представляет собой систему для автоматического анализа медицинских изображений (DICOM и NIfTI) с целью выявления снимков с патологиями в исследованиях КТ органов грудной клетки.
 
 ## 🏆 Производительность модели
 
@@ -49,9 +49,6 @@ Sensitivity: 84.62% | Specificity: 72.86%
 - ✅ Обработка ZIP архивов с DICOM сериями и NIfTI файлами
 - ✅ Автоматическое выявление патологий с оценкой вероятности (0.0-1.0)
 - ✅ Генерация детализированных Excel отчётов согласно требованиям ТЗ
-- ✅ Локализация выявленных патологий в координатах (x,y,z)
-- ✅ REST API для программной интеграции
-- ✅ Web интерфейс для интерактивного использования
 - ✅ Robust error handling и детальная отчётность об ошибках
 
 ### 📈 **Производительность:**
@@ -79,41 +76,27 @@ Sensitivity: 84.62% | Specificity: 72.86%
 
 ## 🚀 Быстрый старт (Quick Start)
 
+### Шаг 1: Установка зависимостей
+
+Запускаем скрипт установки зависимостей
+
+``` 
+bash install.sh
 ```
-### Запуск системы
+**Скрипт автоматически установит:**
+- CT-CLIP модуль (`src/ct_clip`)
+- Transformer MaskGIT (`src/transformer_maskgit`)
+- Все Python зависимости из `requirements.txt`
+
+### Шаг 2: Скачивание моделей
+
+Скачайте предобученные модели:
+- CT_LiPro_v2.pt (~2GB) → `models/CT_LiPro_v2.pt`
+- **catboost_pathology_classifier.cbm** (~10MB) → `models/catboost_pathology_classifier.cbm`
+
+### Шаг 3: Откройте ноутбук `quick_start.ipynb`, находящийся в корне репозитория.
+
 ```
-# Запуск через Docker Compose (рекомендуется)
-
-docker-compose up -d
-
-# Проверка статуса сервисов
-
-docker-compose ps
-
-```
-
-### Использование системы**
-
-#### **REST API:**
-```
-
-
-# Загрузка файлов через API
-
-curl -X POST "http://localhost:8000/api/v1/process" \
--F "files=@study1.zip" \
--F "files=@study2.zip"
-
-# Проверка статуса обработки
-
-curl "http://localhost:8000/api/v1/status/{task_id}"
-
-# Скачивание результатов
-
-curl "http://localhost:8000/api/v1/download/{task_id}" -o results.xlsx
-
-
-
 ### Пример результата**
 
 После обработки вы получите Excel файл со следующей структурой:
@@ -125,7 +108,7 @@ curl "http://localhost:8000/api/v1/download/{task_id}" -o results.xlsx
 
 ## 📁 Структура проекта
 
-
+```
 ```
 ct-pathology-detection/
 ├── 📄 README.md                    \# Этот файл
@@ -167,10 +150,6 @@ ct-pathology-detection/
 │   ├── 📄 CTLiProv2.pt           \# CT-CLIP checkpoint (~2GB)
 │   └── 📄 catboost_model.cbm     \# CatBoost модель (~10MB)
 │
-├── 📂 docs/                       \# Документация
-│   ├── 📄 deployment_guide.md     \# Руководство по развертыванию
-│   ├── 📄 user_manual.md          \# Руководство пользователя
-│   └── 📄 api_reference.md        \# Справочник API
 │
 ├── 📂 tests/                      \# Тесты
     ├── 📄 test_pipeline.py        \# Тесты core pipeline
@@ -185,39 +164,8 @@ ct-pathology-detection/
 - **`src/feature_extraction.py`** - CT-CLIP feature extractor с поддержкой batch processing
 - **`src/model.py`** - CatBoost classifier wrapper с методами train/predict
 
-### **🌐 API & Web:**
+### **🌐 API**
 - **`src/api/main.py`** - FastAPI приложение с эндпоинтами `/process`, `/status`, `/download`
-- **`src/web/gradio_interface.py`** - Gradio web интерфейс для интерактивного использования
 
-### **🐳 Deployment:**
-- **`docker-compose.yml`** - Оркестрация сервисов (API + Web + Redis)
-- **`Dockerfile`** - Multi-stage build с оптимизацией размера образа
-- **`requirements.txt`** - Точные версии всех Python зависимостей
-
-### **📊 Models:**
-- **`models/CTLiProv2.pt`** - Предобученная CT-CLIP модель (Foundation Model)
-- **`models/catboost_model.cbm`** - Обученный CatBoost классификатор
-
-## 🛟 Поддержка и документация
-
-### **📚 Дополнительная документация:**
-- [📖 Deployment Guide](docs/deployment_guide.md) - Подробное руководство по развертыванию
-- [👥 User Manual](docs/user_manual.md) - Руководство пользователя с примерами
-- [🔧 API Reference](docs/api_reference.md) - Полная документация API
-
-### **🐛 Решение проблем:**
-
-# Просмотр логов сервисов
-```
-docker-compose logs -f
-```
-# Перезапуск сервисов
-```
-docker-compose restart
-```
-# Полная переустановка
-```
-docker-compose down -v
-docker-compose up -d --build
 
 ```

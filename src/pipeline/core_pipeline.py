@@ -1,27 +1,28 @@
 """
 Core Pipeline для CT Pathology Detection
 """
+
 import logging
 import time
 import tempfile
 import shutil
-import uuid
 import zipfile
 import traceback
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import pandas as pd
 from datetime import datetime
 import numpy as np
+import torch
+import gc
 
 from src.preprocessing import preprocess_nifti, prepare_metadata_for_preprocessing
 from src.feature_extraction import create_ct_clip_model_and_extractor
 from src.model import PathologyClassifier
 
 from .data_models import (
-    StudyInfo, VolumeData, FeatureVector, ClassificationResult, 
+    StudyInfo, VolumeData, FeatureVector, ClassificationResult,
     ProcessingResult, PipelineConfig, ProcessingStatus
 )
 from .data_discovery import DataDiscoveryService
@@ -33,14 +34,19 @@ class CTPathologyPipeline:
     Production pipeline для обнаружения патологий на КТ.
     
     Flow:
-    ZIP Archives → Data Discovery → Volume Loading → Preprocessing 
+    ZIP Archives → Data Discovery → Volume Loading → Preprocessing
     → CT-CLIP Features → CatBoost Classification → Excel Report
     """
-    
+
     def __init__(self, config: PipelineConfig):
+        """
+        Инициализация pipeline.
+        
+        Args:
+            config: Конфигурация pipeline
+        """
         self.config = config
         self.logger = self._setup_logger()
-        
         self.data_discovery = DataDiscoveryService(self.logger)
         self.volume_loader = VolumeLoaderService(self.logger)
         
@@ -49,9 +55,14 @@ class CTPathologyPipeline:
         self.classifier = None
         
         self._initialize_models()
-    
+
     def _setup_logger(self) -> logging.Logger:
-        """Настройка логгера"""
+        """
+        Настройка логгера.
+        
+        Returns:
+            logging.Logger: Настроенный логгер
+        """
         logger = logging.getLogger(__name__)
         logger.setLevel(getattr(logging, self.config.log_level.upper()))
         
@@ -64,9 +75,14 @@ class CTPathologyPipeline:
             logger.addHandler(handler)
         
         return logger
-    
-    def _initialize_models(self):
-        """Инициализация моделей CT-CLIP и CatBoost"""
+
+    def _initialize_models(self) -> None:
+        """
+        Инициализация моделей CT-CLIP и CatBoost.
+        
+        Raises:
+            Exception: При ошибках загрузки моделей
+        """
         self.logger.info("Initializing models...")
         
         try:
@@ -83,10 +99,10 @@ class CTPathologyPipeline:
         except Exception as e:
             self.logger.error(f"Failed to initialize models: {e}")
             raise
-    
+
     def process_zip_archives(
-        self, 
-        zip_paths: List[str], 
+        self,
+        zip_paths: List[str],
         output_excel: str
     ) -> pd.DataFrame:
         """
@@ -95,14 +111,13 @@ class CTPathologyPipeline:
         Args:
             zip_paths: Список путей к ZIP архивам
             output_excel: Путь для сохранения Excel отчёта
-            
+        
         Returns:
             pd.DataFrame: Результаты обработки
         """
         self.logger.info(f"Processing {len(zip_paths)} ZIP archives")
         
         all_results = []
-        
         for zip_path in zip_paths:
             try:
                 results = self.process_single_zip(zip_path)
@@ -111,23 +126,21 @@ class CTPathologyPipeline:
                 self.logger.error(f"Failed to process ZIP {zip_path}: {e}")
         
         self.logger.info(f"Total results: {len(all_results)}")
-        
         report_df = self.generate_excel_report(all_results, output_excel)
         
         return report_df
-    
+
     def process_single_zip(self, zip_path: str) -> List[ProcessingResult]:
         """
         Обрабатывает один ZIP архив.
         
         Args:
             zip_path: Путь к ZIP архиву
-            
+        
         Returns:
             List[ProcessingResult]: Результаты обработки всех исследований
         """
         self.logger.info(f"Processing ZIP: {zip_path}")
-        
         temp_dir = tempfile.mkdtemp(prefix="ct_pathology_")
         
         try:
@@ -139,10 +152,9 @@ class CTPathologyPipeline:
             self.logger.info(f"Found {len(studies)} studies in ZIP")
             
             results = []
-            
             with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
                 future_to_study = {
-                    executor.submit(self.process_single_study, study): study 
+                    executor.submit(self.process_single_study, study): study
                     for study in studies
                 }
                 
@@ -154,8 +166,8 @@ class CTPathologyPipeline:
                     except Exception as e:
                         self.logger.error(f"Study {study.study_uid} failed: {e}")
                         error_result = self.create_failed_result(
-                            study, 
-                            str(e), 
+                            study,
+                            str(e),
                             processing_time=0.0
                         )
                         results.append(error_result)
@@ -164,14 +176,14 @@ class CTPathologyPipeline:
             
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
-    
+
     def process_single_study(self, study: StudyInfo) -> ProcessingResult:
         """
         Обрабатывает одно исследование.
         
         Args:
             study: Информация об исследовании
-            
+        
         Returns:
             ProcessingResult: Результат обработки
         """
@@ -181,15 +193,21 @@ class CTPathologyPipeline:
         try:
             self.logger.info(f"Processing study: {study.study_uid}, series: {study.series_uid}")
             
+            # Volume loading
             volume_data = self.volume_loader.load_volume_from_study(study)
             completed_steps.append("volume_loading")
-            
+
+            # Preprocessing
             preprocessed_volume = self.preprocess_volume(volume_data)
+            del volume_data  # Освобождаем память
             completed_steps.append("preprocessing")
             
+            # Feature extraction
             feature_vector = self.extract_features(preprocessed_volume)
+            del preprocessed_volume  # Освобождаем память
             completed_steps.append("feature_extraction")
             
+            # Classification
             classification_result = self.classify_features(feature_vector)
             completed_steps.append("classification")
             
@@ -211,85 +229,98 @@ class CTPathologyPipeline:
                 f"Study {study.study_uid} completed in {processing_time:.2f}s: "
                 f"pathology={result.pathology}, prob={result.probability_of_pathology:.3f}"
             )
-            
+
             return result
             
         except Exception as e:
             processing_time = time.time() - start_time
             self.logger.error(f"Study {study.study_uid} failed: {e}")
             return self.create_failed_result(
-                study, 
-                str(e), 
+                study,
+                str(e),
                 processing_time=processing_time,
                 completed_steps=completed_steps
             )
-    
+        
+        finally:
+
+            collected = gc.collect()
+            
+            # Логируем только если было что-то собрано (избегаем шума в логах)
+            if collected > 0:
+                self.logger.debug(
+                    f"🧹 Freed {collected} unreferenced objects for study {study.study_uid}"
+                )
+
     def preprocess_volume(self, volume_data: VolumeData) -> np.ndarray:
         """
         Предобработка медицинского тома.
         
-        Использует prepare_metadata_for_preprocessing для адаптации
-        метаданных VolumeData в формат для preprocess_nifti.
-        
         Args:
             volume_data: Загруженный том с метаданными
-            
+        
         Returns:
             np.ndarray: Предобработанный том
+        
+        Raises:
+            RuntimeError: При ошибках предобработки
         """
         try:
             meta_row = prepare_metadata_for_preprocessing(volume_data)
-            
             preprocessed = preprocess_nifti(
                 nii_path=volume_data.volume,
                 meta_row=meta_row,
                 Volume=True
             )
-            
             return preprocessed
-        
+            
         except torch.cuda.OutOfMemoryError as e:
-            # Очищаем GPU память
             torch.cuda.empty_cache()
-
             self.logger.error(
                 f"CUDA Out of Memory during preprocessing. "
                 f"Volume shape: {volume_data.volume.shape}. "
                 f"Try reducing batch size or processing on CPU."
             )
-            raise RuntimeError(f"GPU memory overflow during preprocessing: {e}")    
-        
+            raise RuntimeError(f"GPU memory overflow during preprocessing: {e}")
+            
         except Exception as e:
             raise RuntimeError(f"Preprocessing failed: {e}")
-    
+
     def extract_features(self, preprocessed_volume: np.ndarray) -> FeatureVector:
         """
         Извлечение признаков через CT-CLIP.
-
+        
         Args:
             preprocessed_volume: Предобработанный том
-
+        
         Returns:
             FeatureVector: 512-мерный вектор эмбеддингов
+        
+        Raises:
+            RuntimeError: При ошибках извлечения признаков
         """
         try:
             start_time = time.time()
-
-            # Конвертируем numpy в torch tensor если нужно
+            
+            # Конвертируем numpy в torch tensor
             if isinstance(preprocessed_volume, np.ndarray):
                 volume_tensor = torch.from_numpy(preprocessed_volume).float()
             else:
                 volume_tensor = preprocessed_volume
-
-            # Вызываем extract_single вместо extract_features
+            
+            # КРИТИЧНО: Принудительно ставим device в cpu если CUDA недоступна
+            if not torch.cuda.is_available():
+                volume_tensor = volume_tensor.cpu()
+            
+            # Извлечение эмбеддингов
             embeddings = self.feature_extractor.extract_single(
                 volume_tensor=volume_tensor,
                 text=self.config.text_prompt,
                 return_numpy=True
             )
-
+            
             extraction_time = time.time() - start_time
-
+            
             feature_vector = FeatureVector(
                 embeddings=embeddings,
                 extraction_time=extraction_time,
@@ -299,32 +330,46 @@ class CTPathologyPipeline:
                 },
                 text_prompt=self.config.text_prompt
             )
-
-            return feature_vector
-        
-        except torch.cuda.OutOfMemoryError as e:
-            # Очищаем GPU память
-            torch.cuda.empty_cache()
-
-            self.logger.error(
-                f"CUDA Out of Memory during feature extraction. "
-                f"Try reducing batch size or processing on CPU."
-            )
-            raise RuntimeError(f"GPU memory overflow during feature extraction: {e}")
             
+            return feature_vector
+            
+        except RuntimeError as e:
+            # Отлавливаем "Torch not compiled with CUDA enabled"
+            if "CUDA" in str(e) or "cuda" in str(e):
+                self.logger.warning(f"CUDA error caught, retrying on CPU: {e}")
+                # Повторная попытка с явным CPU
+                volume_tensor = volume_tensor.cpu() if hasattr(volume_tensor, 'cpu') else volume_tensor
+                embeddings = self.feature_extractor.extract_single(
+                    volume_tensor=volume_tensor,
+                    text=self.config.text_prompt,
+                    return_numpy=True
+                )
+                extraction_time = time.time() - start_time
+                return FeatureVector(
+                    embeddings=embeddings,
+                    extraction_time=extraction_time,
+                    model_info={'model': 'CT-CLIP', 'checkpoint': self.config.ct_clip_checkpoint},
+                    text_prompt=self.config.text_prompt
+                )
+            else:
+                raise RuntimeError(f"Feature extraction failed: {e}")
+                
         except Exception as e:
             raise RuntimeError(f"Feature extraction failed: {e}")
 
-    
+
     def classify_features(self, feature_vector: FeatureVector) -> ClassificationResult:
         """
         Классификация через CatBoost.
         
         Args:
             feature_vector: Вектор признаков от CT-CLIP
-            
+        
         Returns:
             ClassificationResult: Результат классификации
+        
+        Raises:
+            RuntimeError: При ошибках классификации
         """
         try:
             start_time = time.time()
@@ -333,9 +378,7 @@ class CTPathologyPipeline:
             probabilities = self.classifier.predict_proba(embeddings_reshaped)
             
             probability_of_pathology = float(probabilities[0, 1])
-            
             prediction = int(probability_of_pathology >= 0.5)
-            
             confidence_score = abs(probability_of_pathology - 0.5) * 2.0
             
             inference_time = time.time() - start_time
@@ -350,11 +393,11 @@ class CTPathologyPipeline:
             
         except Exception as e:
             raise RuntimeError(f"Classification failed: {e}")
-    
+
     def create_failed_result(
-        self, 
-        study: StudyInfo, 
-        error: str, 
+        self,
+        study: StudyInfo,
+        error: str,
         processing_time: float = 0.0,
         completed_steps: Optional[List[str]] = None
     ) -> ProcessingResult:
@@ -366,7 +409,7 @@ class CTPathologyPipeline:
             error: Описание ошибки
             processing_time: Время обработки до ошибки
             completed_steps: Список завершённых этапов
-            
+        
         Returns:
             ProcessingResult: Результат с ошибкой
         """
@@ -383,10 +426,10 @@ class CTPathologyPipeline:
             error_details=full_traceback,
             processing_steps_completed=completed_steps or []
         )
-    
+
     def generate_excel_report(
-        self, 
-        results: List[ProcessingResult], 
+        self,
+        results: List[ProcessingResult],
         output_path: str
     ) -> pd.DataFrame:
         """
@@ -400,15 +443,17 @@ class CTPathologyPipeline:
         Args:
             results: Список результатов обработки
             output_path: Путь для сохранения Excel
-            
+        
         Returns:
             pd.DataFrame: Датафрейм с результатами
         """
         self.logger.info(f"Generating Excel report: {output_path}")
         
+        # Конвертация результатов в DataFrame
         results_dicts = [r.to_dict() for r in results]
         df = pd.DataFrame(results_dicts)
         
+        # Обязательные колонки согласно ТЗ
         required_columns = [
             'path_to_study',
             'study_uid',
@@ -426,12 +471,15 @@ class CTPathologyPipeline:
         
         df = df[required_columns]
         
+        # Статистика
         success_results = [r for r in results if r.processing_status == "Success"]
         error_results = [r for r in results if r.processing_status == "Failure"]
         
+        # Сохранение в Excel с несколькими листами
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Results', index=False)
             
+            # Лист Summary
             summary_data = {
                 'Metric': [
                     'Total Studies',
@@ -455,11 +503,11 @@ class CTPathologyPipeline:
             summary_df = pd.DataFrame(summary_data)
             summary_df.to_excel(writer, sheet_name='Summary', index=False)
             
+            # Лист Errors (если есть ошибки)
             if error_results:
                 error_df = pd.DataFrame([r.to_dict() for r in error_results])
                 error_df = error_df.rename(columns={'error_details': 'Full Traceback'})
                 error_df.to_excel(writer, sheet_name='Errors', index=False)
         
         self.logger.info(f"Excel report saved: {output_path}")
-        
         return df

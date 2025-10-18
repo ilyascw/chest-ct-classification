@@ -155,7 +155,7 @@ def select_max_depth_uid(dicom_dir: str) -> Tuple[str, List[str]]:
         
     except Exception:
         # Fallback: все .dcm файлы
-        dcm_files = list(Path(dicom_dir).glob("*.dcm"))
+        dcm_files = list(Path(dicom_dir).glob("*"))
         return "fallback_series", [str(f) for f in dcm_files]
 
 def load_via_filelist_sitk(filelist: List[str]) -> Tuple[torch.Tensor, Dict[str, Any]]:
@@ -308,11 +308,14 @@ def get_all_series_in_dicom_dir(dicom_dir: Path) -> List[Tuple[str, List[Path]]]
     
     series_dict = {}
     
-    for dcm_file in dicom_dir.rglob("*.dcm"):
+    for dcm_file in dicom_dir.rglob("*"):
         try:
             ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
             series_uid = getattr(ds, 'SeriesInstanceUID', 'unknown')
             
+            # study_uid = getattr(ds, "StudyInstanceUID", None)
+            # series_uid = getattr(ds, "SeriesInstanceUID", None)
+
             if series_uid not in series_dict:
                 series_dict[series_uid] = []
             series_dict[series_uid].append(dcm_file)
@@ -468,7 +471,7 @@ def discover_inputs_robust(
             logger.warning(f"Failed to process NIfTI {nifti_path}: {e}")
     
     dicom_dirs = set()
-    for dcm_file in input_dir.rglob("*.dcm"):
+    for dcm_file in input_dir.rglob("*"):
         dicom_dirs.add(dcm_file.parent)
     
     for dicom_dir in dicom_dirs:

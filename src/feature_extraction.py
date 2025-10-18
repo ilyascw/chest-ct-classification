@@ -130,7 +130,6 @@ class CTCLIPFeatureExtractor:
                 
         except Exception as e:
             logger.error(f"Error in extract_single: {e}")
-            return None
     
     def extract_batch(
         self,
@@ -214,7 +213,7 @@ def create_ctclip_model_and_extractor(
     device: Optional[str] = None
 ) -> Tuple[ImageLatentsClassifier, CTCLIPFeatureExtractor]:
     """
-    НОВАЯ функция для правильного создания CT-CLIP на основе обсуждения
+    функция для создания CT-CLIP
     """
     
     if device is None:

@@ -1,11 +1,11 @@
 """
 Data models for Core Pipeline
 """
+
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict, Any, Tuple, Union
 from pathlib import Path
 from enum import Enum
-import uuid
 import json
 import numpy as np
 
@@ -32,8 +32,8 @@ class StudyInfo:
     
     Attributes:
         path_to_study: Путь к директории с исследованием
-        study_uid: Уникальный идентификатор исследования
-        series_uid: Уникальный идентификатор серии
+        study_uid: Уникальный идентификатор исследования (для DICOM — StudyInstanceUID)
+        series_uid: Уникальный идентификатор серии (для DICOM — SeriesInstanceUID)
         data_type: Тип данных (DICOM/NIFTI)
         files_count: Количество файлов в серии
         file_size_mb: Размер файлов в МБ
@@ -46,12 +46,36 @@ class StudyInfo:
     files_count: int
     file_size_mb: float
     metadata: Dict[str, Any]
-    
-    def __post_init__(self):
-        if not self.study_uid or self.study_uid == "unknown":
-            self.study_uid = f"study_{uuid.uuid4().hex[:8]}"
-        if not self.series_uid or self.series_uid == "unknown":
-            self.series_uid = f"series_{uuid.uuid4().hex[:8]}"
+
+    def __post_init__(self) -> None:
+        """
+        Валидация UIDs после инициализации.
+        
+        Для DICOM запрещена автогенерация UID — они должны быть прочитаны
+        из DICOM-тегов (0020,000D) и (0020,000E).
+        Для NIfTI генерируются synthetic UIDs на основе имени файла.
+        """
+        # Для DICOM UIDs должны быть явно заданы, автогенерация запрещена
+        if self.data_type == DataType.DICOM:
+            if not self.study_uid or self.study_uid == "unknown":
+                raise ValueError(
+                    "DICOM StudyInstanceUID (0020,000D) is missing or invalid. "
+                    "Auto-generation is prohibited for DICOM data."
+                )
+            if not self.series_uid or self.series_uid == "unknown":
+                raise ValueError(
+                    "DICOM SeriesInstanceUID (0020,000E) is missing or invalid. "
+                    "Auto-generation is prohibited for DICOM data."
+                )
+        
+        # Для NIfTI генерируем UIDs на основе имени файла
+        elif self.data_type == DataType.NIFTI:
+            if not self.study_uid or self.study_uid == "unknown":
+                file_stem = Path(self.path_to_study).stem.replace('.nii', '')
+                self.study_uid = f"nifti_study_{file_stem}"
+            if not self.series_uid or self.series_uid == "unknown":
+                file_stem = Path(self.path_to_study).stem.replace('.nii', '')
+                self.series_uid = f"nifti_series_{file_stem}"
 
 
 @dataclass
@@ -138,11 +162,12 @@ class ProcessingResult:
     time_of_processing: float
     error_details: str = ""
     processing_steps_completed: List[str] = None
-    
-    def __post_init__(self):
+
+    def __post_init__(self) -> None:
+        """Инициализация processing_steps_completed как пустого списка"""
         if self.processing_steps_completed is None:
             self.processing_steps_completed = []
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Конвертация в словарь для Excel отчёта"""
         return asdict(self)

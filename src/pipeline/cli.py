@@ -1,4 +1,3 @@
-# src/pipeline/cli.py
 """
 Command Line Interface для тестирования Core Pipeline
 """
