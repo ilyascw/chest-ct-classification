@@ -2,40 +2,64 @@ version: "3.9"
 
 services:
   ct-pathology-api:
-    image: ct-pathology-api:2  # Используем загруженный образ напрямую
+    # Образ с моделями внутри (модели уже включены в образ)
+    image: ct-pathology-api:amd64
     container_name: ct-pathology-api
     
+    # GPU поддержка для NVIDIA карт
     deploy:
       resources:
         reservations:
           devices:
             - capabilities: [gpu]
-    
     runtime: nvidia
     
+    # Переменные окружения
     environment:
+      # NVIDIA настройки
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      
+      # HuggingFace кэш
       - HF_HOME=/opt/hf_cache
       - TRANSFORMERS_CACHE=/opt/hf_cache
+      
+      # Оптимизация производительности
       - OMP_NUM_THREADS=4
       - MKL_NUM_THREADS=4
       - TOKENIZERS_PARALLELISM=false
+      
+      # Uvicorn настройки (1 worker для стабильности CUDA)
       - UVICORN_WORKERS=1
     
+    # Порты
     ports:
       - "8000:8000"
     
+    # Volumes (ТОЛЬКО для временных файлов, модели уже в образе)
     volumes:
-      - ./models:/app/models:ro
+      # Временная директория для распаковки ZIP (до 70 GB)
       - ./runtime_tmp:/tmp/ct_api
+      
+      # Кэш HuggingFace (опционально, для ускорения)
       - ./hf_cache:/opt/hf_cache
     
+    # Shared memory для SimpleITK и DICOM обработки
     shm_size: "8g"
     
+    # Увеличение лимита файловых дескрипторов
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
     
+    # Автоматический перезапуск
     restart: unless-stopped
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # 2 минуты на прогрев моделей

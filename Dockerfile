@@ -1,63 +1,63 @@
-# CUDA runtime + cuDNN под RTX 30xx (CUDA 11.8)
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+# CUDA runtime + cuDNN для RTX 30xx (CUDA 11.8)
+FROM --platform=linux/amd64 nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # HuggingFace кэш внутрь образа
     HF_HOME=/opt/hf_cache \
     TRANSFORMERS_CACHE=/opt/hf_cache \
-    # Ускоренный backend для скачивания (можно выключить)
-    HF_HUB_ENABLE_HF_TRANSFER=1
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    TORCH_CUDA_ARCH_LIST="8.0 8.6" \
+    FORCE_CUDA=1
 
 # Системные зависимости
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git curl ca-certificates libgl1 libglib2.0-0 libgomp1 \
- && rm -rf /var/lib/apt/lists/*
-
-# Python
-RUN apt-get update && apt-get install -y python3.11 python3.11-venv python3-pip \
- && rm -rf /var/lib/apt/lists/*
-RUN python3 -m pip install --upgrade pip
+    build-essential \
+    git \
+    curl \
+    ca-certificates \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 WORKDIR /app
 
-# Копируем requirements для кэша
-COPY requirements.txt /app/requirements.txt
+# Копируем requirements
+COPY requirements.txt /app/
 
-# Важно: поставить torch для CUDA 11.8
-# Либо положиться на резолвер, либо явно указать индекс
-RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 \
- && pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir fastapi uvicorn[standard] python-multipart requests
+# КРИТИЧНО: PyTorch CUDA 11.8 устанавливаем ПЕРВЫМ
+# Это переопределит torch>=2.1 из requirements.txt
+RUN pip install --no-cache-dir \
+    torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
+    --index-url https://download.pytorch.org/whl/cu118
 
-# Копируем исходники и модели
+# Устанавливаем ВСЕ остальные зависимости из requirements.txt
+# torch уже установлен с CUDA → pip пропустит его
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем исходники
 COPY src/ /app/src/
 COPY models/ /app/models/
 
-# Локальные editable-пакеты
-RUN cd /app/src/transformer_maskgit && pip install --no-cache-dir -e . \
- && cd /app/src/ct_clip && pip install --no-cache-dir -e .
+# Установка editable packages (если есть)
+RUN if [ -f /app/src/transformer_maskgit/setup.py ]; then \
+        cd /app/src/transformer_maskgit && pip install --no-cache-dir -e .; \
+    fi && \
+    if [ -f /app/src/ct_clip/setup.py ]; then \
+        cd /app/src/ct_clip && pip install --no-cache-dir -e .; \
+    fi
 
-# (Опционально) Препуллить HuggingFace модель/токенайзер для офлайна
-# Если интернет недоступен на проде — раскомментировать.
-# RUN python3 - <<'PY'
-# from transformers import BertTokenizer, BertModel
-# name = "microsoft/BiomedVLP-CXR-BERT-specialized"
-# BertTokenizer.from_pretrained(name)
-# BertModel.from_pretrained(name)
-# PY
+# Создание директорий
+RUN mkdir -p /tmp/ct_api /opt/hf_cache && chmod 777 /tmp/ct_api
 
-# Папка для временных файлов API
-RUN mkdir -p /tmp/ct_api
-
-# Экспорт порта
 EXPOSE 8000
 
-# Healthcheck через curl, чтобы не тянуть requests
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
  CMD curl -fsS http://localhost:8000/health || exit 1
 
-# Запуск API
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
