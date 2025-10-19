@@ -1,5 +1,4 @@
-# CUDA runtime + cuDNN для RTX 30xx (CUDA 11.8)
-FROM --platform=linux/amd64 nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM --platform=linux/amd64 nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -7,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/opt/hf_cache \
     TRANSFORMERS_CACHE=/opt/hf_cache \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
-    TORCH_CUDA_ARCH_LIST="8.0 8.6" \
+    TORCH_CUDA_ARCH_LIST="8.0 8.6 9.0" \
     FORCE_CUDA=1
 
 # Системные зависимости
@@ -27,32 +26,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Копируем requirements
 COPY requirements.txt /app/
 
-# КРИТИЧНО: PyTorch CUDA 11.8 устанавливаем ПЕРВЫМ
-# Это переопределит torch>=2.1 из requirements.txt
+# СНАЧАЛА устанавливаем PyTorch из официального репозитория
 RUN pip install --no-cache-dir \
-    torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
-    --index-url https://download.pytorch.org/whl/cu118
+    torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+    --index-url https://download.pytorch.org/whl/cu128
 
-# Устанавливаем ВСЕ остальные зависимости из requirements.txt
-# torch уже установлен с CUDA → pip пропустит его
-RUN pip install --no-cache-dir -r requirements.txt
+# ЗАТЕМ устанавливаем остальные зависимости, ПРОПУСКАЯ PyTorch
+RUN pip install --no-cache-dir \
+    $(grep -v "^torch==" requirements.txt | grep -v "^torchvision==" | grep -v "^torchaudio==")
 
 # Копируем исходники
 COPY src/ /app/src/
 COPY models/ /app/models/
 
 # Установка editable packages (если есть)
-RUN if [ -f /app/src/transformer_maskgit/setup.py ]; then \
+RUN if [ -d /app/src/transformer_maskgit ] && [ -f /app/src/transformer_maskgit/setup.py ]; then \
         cd /app/src/transformer_maskgit && pip install --no-cache-dir -e .; \
     fi && \
-    if [ -f /app/src/ct_clip/setup.py ]; then \
+    if [ -d /app/src/ct_clip ] && [ -f /app/src/ct_clip/setup.py ]; then \
         cd /app/src/ct_clip && pip install --no-cache-dir -e .; \
     fi
 
-# Создание директорий
 RUN mkdir -p /tmp/ct_api /opt/hf_cache && chmod 777 /tmp/ct_api
 
 EXPOSE 8000
