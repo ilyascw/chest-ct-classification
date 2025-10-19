@@ -21,4 +21,5 @@ tests/test_data
 tests/test_results
 .DS_Store
 .ipynb_checkpoints
-*.egg-info
+*.egg-info/
+__pycache__/
