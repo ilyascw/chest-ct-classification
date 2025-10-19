@@ -1,13 +1,16 @@
 # 🏥 CT Pathology Detection System
 
 > **Автоматизированная система первичного скрининга КТ ОГК**
-> Интеллектуальное решение на базе CT-CLIP foundation model и CatBoost для массового скрининга медицинских изображений.
+> Интеллектуальное решение на базе CT-CLIP foundation model и CatBoost для массового скрининга исследований ОГК.
 
 ## 📋 Описание решения
 
-CT Pathology Detection System представляет собой систему для автоматического анализа КТ-исследований ОГК (форматы DICOM и NIfTI) на предмет наличия паталогий. Обладает высокой производительностью: 5-8 секунд / исследование.
+CT Pathology Detection System представляет собой систему для автоматического анализа КТ-исследований ОГК (форматы DICOM и NIfTI) на предмет наличия патологий. Обладает высокой производительностью: 5-8 секунд / исследование.
 
-## 🏆 Производительность модели
+**Визуализация работы:**
+![alt text](image.png)
+
+## 🏆 Производительность 
 
 ### 📊 **Сравнение подходов (ROC AUC)**
 
@@ -195,4 +198,27 @@ ct-pathology-detection/
 - **`src/preprocessing.py`** - Функции предобработки медицинских изображений под CT-CLIP
 - **`src/feature_extraction.py`** - CT-CLIP feature extractor с поддержкой batch processing
 - **`src/model.py`** - CatBoost classifier wrapper с методами train/predict
-```
+
+
+## Описание источников данных
+
+1. CT-RATE
+
+> [Ссылка](https://huggingface.co/datasets/ibrahimhamamci/CT-RATE)
+Взяли 814 исследований (300н/515)
+
+2. MosMedData КТ с признаками рака легкого тип VIII
+
+> [Ссылка](https://mosmed.ai/datasets/datasets/mosmeddata-kt-s-priznakami-raka-legkogo-tip-viii/)
+Взяли 182 исследования (72н/110)
+
+3. MosMedData НДКТ с признаками рака легкого тип I
+
+> [Ссылка](https://mosmed.ai/datasets/datasets/mm/)
+Взяли 100 исследований (50н/50)
+
+4. MosMedData КТ с признаками коронавирусной инфекции (COVID-19) тип I
+
+> [Ссылка](https://mosmed.ai/datasets/datasets/mosmeddata-kt-s-priznakami-koronavirusnoi-infektsii-covid-19-tip-i/)
+Взяли 120 исследований (50н/70)
+
