@@ -88,22 +88,30 @@ ROC AUC      |  0.9055    |  [0.860; 0.951]|
 
 ## 🚀 Быстрый старт (Quick Start)
 
-> Работа с docker-образом описана в [`DOCKER_README.md`](DOCKER_README.md).
-Если требуется запустить API не в контейнере, см. [`API_README.md`](API_README.md).
+> **⚠️ ВАЖНО:** Проект требует **NVIDIA GPU с CUDA 11.8+**. CPU-версия не поддерживается.
 
-### Чтобы работать над проектом
+> Работа с Docker-образом описана в [`DOCKER_README.md`](DOCKER_README.md).
 
-#### Шаг 1: Установка зависимостей
+### Локальная установка для разработки
 
-Запускаем скрипт установки зависимостей
+#### Шаг 1: Установка PyTorch с CUDA
 
-``` 
-bash install.sh
+**ОБЯЗАТЕЛЬНО установите PyTorch ПЕРЕД остальными зависимостями:**
+
+# Для CUDA 12.8 (RTX 3090/4090/5070 Ti)
+
+```
+pip3 install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+--index-url https://download.pytorch.org/whl/cu128
 ```
 
-ИЛИ
+**Для других версий CUDA:**
 
-##### Устанавливаем зависимости CT-CLIP
+- Полный список версий: https://pytorch.org/get-started/locally/
+
+#### Шаг 2: Установка зависимостей CT-CLIP
+
+Устанавливаем transformer_maskgit
 
 ```
 cd src/transformer_maskgit
@@ -111,35 +119,91 @@ pip install -e .
 cd ../..
 ```
 
+Устанавливаем CT-CLIP
+
 ```
 cd src/ct_clip
 pip install -e .
 cd ../..
 ```
 
-##### Зависимости проекта
+#### Шаг 3: Установка остальных зависимостей
 
 ```
 pip install -r requirements.txt
 ```
 
-#### Шаг 2: Скачивание моделей
+#### Шаг 4: Скачивание моделей
 
-Скачайте предобученные модели:
-- **CT_LiPro_v2.pt** → `models/CT_LiPro_v2.pt`
-- **catboost_pathology_classifier.cbm** → `models/catboost_pathology_classifier.cbm`
+Скачайте предобученные модели и поместите их в папку `models/`:
 
-#### Шаг 3: Откройте ноутбук `quick_start.ipynb`, находящийся в корне репозитория.
+- **CT_LiPro_v2.pt** → `models/CT_LiPro_v2.pt` (~2GB)
+- **catboost_pathology_classifier.cbm** → `models/catboost_pathology_classifier.cbm` (~10MB)
+
+#### Шаг 5: Запуск
+
+Откройте ноутбук `quick_start.ipynb` в корне репозитория:
+
+```
+
+jupyter notebook quick_start.ipynb
+
+```
+
+### Проверка установки GPU
+
+Убедитесь, что PyTorch видит вашу GPU:
+
+```
+
+import torch
+print(f"CUDA доступна: {torch.cuda.is_available()}")
+print(f"Устройств GPU: {torch.cuda.device_count()}")
+print(f"Название GPU: {torch.cuda.get_device_name(0)}")
+
+```
+
+**Ожидаемый результат:**
+```
+
+CUDA доступна: True
+Устройств GPU: 1
+Название GPU: NVIDIA GeForce RTX 3090
+
+```
 
 ### Пример результата
 
-```
 После обработки вы получите Excel файл со следующей структурой:
 
-| path_to_study | study_uid |   series_uid   |probability_of_pathology    | pathology   | processing_status |
-|---------------|-----------|----------------|----------------------------|-------------|-------------------|
-| study_001/    | 1.2.3.4.5 |                |0.8234                      | 1           | Success           |
-| study_002/    | 1.2.3.4.6 |                |0.1456                      | 0           | Success           |
+```
+| path_to_study | study_uid |   series_uid   | probability_of_pathology | pathology | processing_status |
+|---------------|-----------|----------------|--------------------------|-----------|-------------------|
+| study_001/    | 1.2.3.4.5 |                | 0.8234                   | 1         | Success           |
+| study_002/    | 1.2.3.4.6 |                | 0.1456                   | 0         | Success           |
+```
+### Запуск API локально
+
+Для работы через REST API вместо Jupyter Notebook:
+
+```
+# Запуск сервера
+
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+API будет доступен по адресу: http://localhost:8000
+
+Swagger UI документация: http://localhost:8000/docs
+
+
+**Отправка исследований:**
+
+```
+curl -X POST "http://localhost:8000/predict" \
+-F "file=@studies.zip" \
+-o results.xlsx
+
 ```
 
 ## 📁 Структура проекта
