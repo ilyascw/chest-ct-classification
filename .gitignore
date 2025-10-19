@@ -6,7 +6,6 @@ local_dev/temp/
 data/
 *.pt
 *.cbm
-*.png
 *.pkl
 *.json
 *.txt
