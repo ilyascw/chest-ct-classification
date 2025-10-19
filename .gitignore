@@ -23,3 +23,4 @@ tests/test_results
 *.egg-info/
 __pycache__/
 *.tar.gz
+*.pdf
