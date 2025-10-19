@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  ct-pathology-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ct-pathology-api:latest
+    container_name: ct-pathology-api
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    # Для Docker Desktop + NVIDIA Container Toolkit:
+    # Эквивалентно: docker run --gpus all
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Опционально: офлайн режим для HF, если модель закеширована на этапе build
+      # - TRANSFORMERS_OFFLINE=1
+      - HF_HOME=/opt/hf_cache
+      - TRANSFORMERS_CACHE=/opt/hf_cache
+      # Тюнинг производительности/памяти
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+      - TOKENIZERS_PARALLELISM=false
+      - UVICORN_WORKERS=1
+    ports:
+      - "8000:8000"
+    volumes:
+      # Модели (если хотите подменять с хоста)
+      - ./models:/app/models:ro
+      # Быстрый диск под временные файлы и распаковку ZIP (50–70 ГБ)
+      - ./runtime_tmp:/tmp/ct_api
+      # При желании — кэш HF на хосте для ускорения
+      - ./hf_cache:/opt/hf_cache
+    shm_size: "8g"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    restart: unless-stopped

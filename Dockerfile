@@ -1,43 +1,63 @@
-# Multi-stage build для оптимизации размера образа
-FROM python:3.11-slim AS base
+# CUDA runtime + cuDNN под RTX 30xx (CUDA 11.8)
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
-# Установка системных зависимостей (обновлённые пакеты для Debian Trixie)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    libgl1 \
-    libglib2.0-0 \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    # HuggingFace кэш внутрь образа
+    HF_HOME=/opt/hf_cache \
+    TRANSFORMERS_CACHE=/opt/hf_cache \
+    # Ускоренный backend для скачивания (можно выключить)
+    HF_HUB_ENABLE_HF_TRANSFER=1
 
-# Рабочая директория
+# Системные зависимости
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git curl ca-certificates libgl1 libglib2.0-0 libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Python
+RUN apt-get update && apt-get install -y python3.11 python3.11-venv python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+RUN python3 -m pip install --upgrade pip
+
 WORKDIR /app
 
-# Копирование requirements для кэширования слоя
-COPY requirements.txt .
+# Копируем requirements для кэша
+COPY requirements.txt /app/requirements.txt
 
-# Установка Python зависимостей
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir fastapi uvicorn[standard] python-multipart
+# Важно: поставить torch для CUDA 11.8
+# Либо положиться на резолвер, либо явно указать индекс
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 \
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir fastapi uvicorn[standard] python-multipart requests
 
-# Копирование исходного кода
-COPY src/ ./src/
-COPY models/ ./models/
+# Копируем исходники и модели
+COPY src/ /app/src/
+COPY models/ /app/models/
 
-# Установка CT-CLIP и transformer_maskgit
-RUN cd src/transformer_maskgit && pip install --no-cache-dir -e . && cd ../.. && \
-    cd src/ct_clip && pip install --no-cache-dir -e . && cd ../..
+# Локальные editable-пакеты
+RUN cd /app/src/transformer_maskgit && pip install --no-cache-dir -e . \
+ && cd /app/src/ct_clip && pip install --no-cache-dir -e .
 
-# Создание директории для временных файлов
+# (Опционально) Препуллить HuggingFace модель/токенайзер для офлайна
+# Если интернет недоступен на проде — раскомментировать.
+# RUN python3 - <<'PY'
+# from transformers import BertTokenizer, BertModel
+# name = "microsoft/BiomedVLP-CXR-BERT-specialized"
+# BertTokenizer.from_pretrained(name)
+# BertModel.from_pretrained(name)
+# PY
+
+# Папка для временных файлов API
 RUN mkdir -p /tmp/ct_api
 
-# Expose порт API
+# Экспорт порта
 EXPOSE 8000
 
-# Healthcheck
+# Healthcheck через curl, чтобы не тянуть requests
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+ CMD curl -fsS http://localhost:8000/health || exit 1
 
 # Запуск API
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
