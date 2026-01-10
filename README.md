@@ -286,3 +286,7 @@ ct-pathology-detection/
 > [Ссылка](https://mosmed.ai/datasets/datasets/mosmeddata-kt-s-priznakami-koronavirusnoi-infektsii-covid-19-tip-i/)
 Взяли 120 исследований (50н/70)
 
+## Ссылка на оригинальную работу CT-CLIP
+
+**Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography** *Ibrahim Ethem Hamamci, Sezgin Er, et al. (2025)* [arXiv:2403.17834](https://arxiv.org/abs/2403.17834)
+
