@@ -1,65 +1,37 @@
-version: "3.9"
-
 services:
   ct-pathology-api:
-    # Образ с моделями внутри (модели уже включены в образ)
-    image: ct-pathology-api:amd64
-    container_name: ct-pathology-api
-    
-    # GPU поддержка для NVIDIA карт
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-    runtime: nvidia
-    
-    # Переменные окружения
+    platform: linux/amd64
+    build:
+      context: .
+    image: ct-pathology-api:local
     environment:
-      # NVIDIA настройки
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      
-      # HuggingFace кэш
-      - HF_HOME=/opt/hf_cache
-      - TRANSFORMERS_CACHE=/opt/hf_cache
-      
-      # Оптимизация производительности
-      - OMP_NUM_THREADS=4
-      - MKL_NUM_THREADS=4
-      - TOKENIZERS_PARALLELISM=false
-      
-      # Uvicorn настройки (1 worker для стабильности CUDA)
-      - UVICORN_WORKERS=1
-    
-    # Порты
+      CT_MODELS_DIR: /app/models
+      CT_DEVICE: ${CT_DEVICE:-cuda}
+      CT_MAX_WORKERS: ${CT_MAX_WORKERS:-1}
+      CT_MAX_UPLOAD_MB: ${CT_MAX_UPLOAD_MB:-10240}
+      CT_LOG_LEVEL: ${CT_LOG_LEVEL:-INFO}
+      CT_API_TMP_DIR: /tmp/ct_api
+      HF_HOME: /opt/hf_cache
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
+      TOKENIZERS_PARALLELISM: "false"
     ports:
       - "8000:8000"
-    
-    # Volumes (ТОЛЬКО для временных файлов, модели уже в образе)
     volumes:
-      # Временная директория для распаковки ZIP (до 70 GB)
       - ./runtime_tmp:/tmp/ct_api
-      
-      # Кэш HuggingFace (опционально, для ускорения)
       - ./hf_cache:/opt/hf_cache
-    
-    # Shared memory для SimpleITK и DICOM обработки
-    shm_size: "8g"
-    
-    # Увеличение лимита файловых дескрипторов
+    gpus: all
+    shm_size: "8gb"
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
-    
-    # Автоматический перезапуск
     restart: unless-stopped
-    
-    # Healthcheck
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # 2 минуты на прогрев моделей
+      start_period: 120s

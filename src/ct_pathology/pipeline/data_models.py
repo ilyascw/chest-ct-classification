@@ -1,17 +1,17 @@
-"""
-Data models for Core Pipeline
-"""
+"""Typed data contracts for the processing pipeline."""
 
-from dataclasses import dataclass, asdict
-from typing import Optional, List, Dict, Any, Tuple, Union
-from pathlib import Path
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-import json
+from pathlib import Path
+from typing import Any
+
 import numpy as np
+from numpy.typing import NDArray
 
 
 class DataType(Enum):
     """Тип медицинских данных"""
+
     DICOM = "dicom"
     NIFTI = "nifti"
     UNKNOWN = "unknown"
@@ -19,6 +19,7 @@ class DataType(Enum):
 
 class ProcessingStatus(Enum):
     """Статус обработки исследования"""
+
     PENDING = "pending"
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -29,7 +30,7 @@ class ProcessingStatus(Enum):
 class StudyInfo:
     """
     Информация об обнаруженном медицинском исследовании.
-    
+
     Attributes:
         path_to_study: Путь к директории с исследованием
         study_uid: Уникальный идентификатор исследования (для DICOM — StudyInstanceUID)
@@ -39,18 +40,19 @@ class StudyInfo:
         file_size_mb: Размер файлов в МБ
         metadata: Дополнительные метаданные
     """
+
     path_to_study: str
     study_uid: str
     series_uid: str
     data_type: DataType
     files_count: int
     file_size_mb: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
     def __post_init__(self) -> None:
         """
         Валидация UIDs после инициализации.
-        
+
         Для DICOM запрещена автогенерация UID — они должны быть прочитаны
         из DICOM-тегов (0020,000D) и (0020,000E).
         Для NIfTI генерируются synthetic UIDs на основе имени файла.
@@ -67,14 +69,14 @@ class StudyInfo:
                     "DICOM SeriesInstanceUID (0020,000E) is missing or invalid. "
                     "Auto-generation is prohibited for DICOM data."
                 )
-        
+
         # Для NIfTI генерируем UIDs на основе имени файла
         elif self.data_type == DataType.NIFTI:
             if not self.study_uid or self.study_uid == "unknown":
-                file_stem = Path(self.path_to_study).stem.replace('.nii', '')
+                file_stem = Path(self.path_to_study).stem.replace(".nii", "")
                 self.study_uid = f"nifti_study_{file_stem}"
             if not self.series_uid or self.series_uid == "unknown":
-                file_stem = Path(self.path_to_study).stem.replace('.nii', '')
+                file_stem = Path(self.path_to_study).stem.replace(".nii", "")
                 self.series_uid = f"nifti_series_{file_stem}"
 
 
@@ -82,7 +84,7 @@ class StudyInfo:
 class VolumeData:
     """
     Загруженный медицинский том с метаданными.
-    
+
     Attributes:
         path: Путь к исходным данным
         volume: 3D массив с данными тома
@@ -92,29 +94,31 @@ class VolumeData:
         metadata: Дополнительные метаданные (включая RescaleSlope/Intercept)
         preprocessing_info: Информация о предобработке
     """
+
     path: Path
-    volume: np.ndarray
-    spacing: Tuple[float, float, float]
-    origin: Tuple[float, float, float]
-    direction: np.ndarray
-    metadata: Dict[str, Any]
-    preprocessing_info: Dict[str, Any]
+    volume: NDArray[np.float32]
+    spacing: tuple[float, float, float]
+    origin: tuple[float, float, float]
+    direction: NDArray[np.float64]
+    metadata: dict[str, Any]
+    preprocessing_info: dict[str, Any]
 
 
 @dataclass
 class FeatureVector:
     """
     Извлечённые признаки из CT-CLIP.
-    
+
     Attributes:
         embeddings: 512-мерный вектор эмбеддингов
         extraction_time: Время извлечения признаков (сек)
         model_info: Информация о модели
         text_prompt: Использованный текстовый промпт
     """
-    embeddings: np.ndarray
+
+    embeddings: NDArray[np.float32]
     extraction_time: float
-    model_info: Dict[str, str]
+    model_info: dict[str, str]
     text_prompt: str
 
 
@@ -122,7 +126,7 @@ class FeatureVector:
 class ClassificationResult:
     """
     Результат классификации CatBoost.
-    
+
     Attributes:
         probability_of_pathology: Вероятность патологии [0, 1]
         pathology_prediction: Бинарный прогноз (0 = норма, 1 = патология)
@@ -130,6 +134,7 @@ class ClassificationResult:
         model_version: Версия модели CatBoost
         inference_time: Время инференса (сек)
     """
+
     probability_of_pathology: float
     pathology_prediction: int
     confidence_score: float
@@ -141,7 +146,7 @@ class ClassificationResult:
 class ProcessingResult:
     """
     Полный результат обработки одного исследования.
-    
+
     Attributes:
         path_to_study: Путь к исследованию
         study_uid: Идентификатор исследования
@@ -153,6 +158,7 @@ class ProcessingResult:
         error_details: Детали ошибки (если есть)
         processing_steps_completed: Список завершённых этапов
     """
+
     path_to_study: str
     study_uid: str
     series_uid: str
@@ -161,14 +167,9 @@ class ProcessingResult:
     processing_status: str
     time_of_processing: float
     error_details: str = ""
-    processing_steps_completed: List[str] = None
+    processing_steps_completed: list[str] = field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        """Инициализация processing_steps_completed как пустого списка"""
-        if self.processing_steps_completed is None:
-            self.processing_steps_completed = []
-
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Конвертация в словарь для Excel отчёта"""
         return asdict(self)
 
@@ -177,7 +178,7 @@ class ProcessingResult:
 class PipelineConfig:
     """
     Конфигурация pipeline.
-    
+
     Attributes:
         ct_clip_checkpoint: Путь к чекпоинту CT-CLIP
         catboost_model: Путь к модели CatBoost
@@ -186,9 +187,25 @@ class PipelineConfig:
         max_workers: Количество параллельных потоков
         log_level: Уровень логирования
     """
+
     ct_clip_checkpoint: str
     catboost_model: str
     text_prompt: str = "chest computed tomography scan for pathology detection"
     device: str = "auto"
     max_workers: int = 4
     log_level: str = "INFO"
+
+    def __post_init__(self) -> None:
+        self.device = self.device.lower()
+        self.log_level = self.log_level.upper()
+
+        if not self.ct_clip_checkpoint:
+            raise ValueError("ct_clip_checkpoint must not be empty")
+        if not self.catboost_model:
+            raise ValueError("catboost_model must not be empty")
+        if self.device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("device must be one of: auto, cpu, cuda")
+        if self.max_workers < 1:
+            raise ValueError("max_workers must be positive")
+        if self.log_level not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
+            raise ValueError("Unsupported log_level")
